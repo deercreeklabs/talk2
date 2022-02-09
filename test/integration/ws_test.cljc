@@ -20,25 +20,25 @@
   (au/go
     (let [{:keys [expected-protocol
                   msg
-                  on-disconnect
+                  on-close
                   protocols-seq
                   timeout-ms
                   url]
-           :or {on-disconnect (constantly nil)
+           :or {on-close (constantly nil)
                 timeout-ms 5000}} arg-map
-          client-rcv-ch (ca/chan)
+          rcv-ch (ca/chan)
           connected-ch (ca/chan)
-          opts {:on-disconnect on-disconnect
+          opts {:on-close on-close
                 :on-error (fn [e]
-                            (ca/put! client-rcv-ch e))
+                            (ca/put! rcv-ch e))
                 :on-message (fn [ws data]
-                              (ca/put! client-rcv-ch data))
+                              (ca/put! rcv-ch data))
                 :on-open (fn [ws protocol]
                            (ca/put! connected-ch (or protocol true)))
                 :protocols-seq protocols-seq}
-          client (ws-client/websocket url opts)]
-      (when-not client
-        (throw (ex-info "Failed to construct WebSocket client"
+          ws (ws-client/websocket url opts)]
+      (when-not ws
+        (throw (ex-info "Failed to construct WebSocket"
                         {:type :execution-error
                          :subtype :construction-failure})))
       (let [[ret ch] (au/alts? [connected-ch (ca/timeout timeout-ms)])]
@@ -54,9 +54,9 @@
                                      expected-protocol "`. Got: `" protocol
                                      "`.")
                                 (u/sym-map expected-protocol protocol)))))
-            (ws-client/send! client msg)
-            (let [[ret ch] (au/alts? [client-rcv-ch (ca/timeout timeout-ms)])]
-              (if (= client-rcv-ch ch)
+            (ws-client/send! ws msg)
+            (let [[ret ch] (au/alts? [rcv-ch (ca/timeout timeout-ms)])]
+              (if (= rcv-ch ch)
                 ret
                 (throw (ex-info "Timed out waiting for client response"
                                 {:type :execution-error
@@ -65,7 +65,7 @@
             (catch #?(:clj Exception :cljs js/Error) e
               (log/error (u/ex-msg-and-stacktrace e)))
             (finally
-              (ws-client/close! client))))))))
+              (ws-client/close! ws))))))))
 
 (deftest test-round-trip-w-small-bin-msg
   (au/test-async

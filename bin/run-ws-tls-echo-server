@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+clojure -M:run-ws-echo-server "8443" "true"

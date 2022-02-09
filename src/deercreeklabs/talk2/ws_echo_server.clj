@@ -34,9 +34,11 @@
                                                    (str " Payload: "
                                                         (ba/byte-array->hex-str
                                                          data)))))))))
-        on-disconnect #(log/info "Conn closed")
+        on-close #(log/info "Conn closed")
         prioritized-protocols-seq ["talk2-2" "talk2-1"]
-        config (cond-> (u/sym-map on-connect on-disconnect port
+        config (cond-> (u/sym-map on-close
+                                  on-connect
+                                  port
                                   prioritized-protocols-seq)
                  tls? (merge (get-tls-configs)))]
     (ws-server/ws-server config)))

@@ -339,19 +339,19 @@
         (log/error (u/ex-msg-and-stacktrace e))))))
 
 (defn do-connect!
-  [^AsynchronousChannel async-nio-ch remote-address on-connect on-disconnect
+  [^AsynchronousChannel async-nio-ch remote-address on-connect on-close
    max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq *server-running?]
   (let [rcv-ch (ca/chan)
-        *on-disconnect-called? (atom false)
+        *on-close-called? (atom false)
         *open? (atom true)
         close-conn! (fn []
                       (reset! *open? false)
                       (ca/close! rcv-ch)
                       (when (.isOpen async-nio-ch)
                         (.close async-nio-ch))
-                      (when (compare-and-set! *on-disconnect-called? false true)
-                        (on-disconnect)))]
+                      (when (compare-and-set! *on-close-called? false true)
+                        (on-close)))]
     (when async-nio-ch
       (<rcv-loop async-nio-ch rcv-ch close-conn! *open? *server-running?)
       (<connect async-nio-ch rcv-ch remote-address *open? *server-running?
@@ -359,7 +359,7 @@
                 keepalive-interval-secs prioritized-protocols-seq))))
 
 (defn <accept-loop-non-tls
-  [port group *server-running? stop-server! on-connect on-disconnect
+  [port group *server-running? stop-server! on-connect on-close
    max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq]
   (ca/go
@@ -371,7 +371,7 @@
                  (let [remote-addr (.getRemoteAddress async-nio-ch)
                        remote-addr-str (.toString ^SocketAddress remote-addr)]
                    (do-connect! async-nio-ch remote-addr-str on-connect
-                                on-disconnect max-payload-len disable-keepalive?
+                                on-close max-payload-len disable-keepalive?
                                 keepalive-interval-secs
                                 prioritized-protocols-seq *server-running?)
                    (if @*server-running?
@@ -392,7 +392,7 @@
         (log/error (u/ex-msg-and-stacktrace e))))))
 
 (defn <accept-loop-tls
-  [port group *server-running? stop-server! on-connect on-disconnect
+  [port group *server-running? stop-server! on-connect on-close
    max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq]
   (ca/go
@@ -417,7 +417,7 @@
                     remote-address (.getRemoteAddress raw-nio-ch)
                     remote-addr-str (.toString ^SocketAddress remote-address)]
                 (do-connect! async-nio-ch remote-addr-str on-connect
-                             on-disconnect max-payload-len disable-keepalive?
+                             on-close max-payload-len disable-keepalive?
                              keepalive-interval-secs prioritized-protocols-seq
                              *server-running?))))
           (if @*server-running?
@@ -454,7 +454,7 @@
                 keepalive-interval-secs
                 private-key-str
                 on-connect
-                on-disconnect
+                on-close
                 port]} config]
     (when certificate-str
       (when-not (string? certificate-str)
@@ -503,11 +503,11 @@
               (str "`:on-connect` value must be a function. Got: `"
                    on-connect "`.")
               (u/sym-map on-connect))))
-    (when (and on-disconnect (not (ifn? on-disconnect)))
+    (when (and on-close (not (ifn? on-close)))
       (throw (ex-info
-              (str "`:on-disconnect` value must be a function. Got: `"
-                   on-disconnect "`.")
-              (u/sym-map on-disconnect))))
+              (str "`:on-close` value must be a function. Got: `"
+                   on-close "`.")
+              (u/sym-map on-close))))
     (when (and port (not (integer? port)))
       (throw (ex-info
               (str "`:port` parameter must be an integer. "
@@ -524,7 +524,7 @@
                 keepalive-interval-secs
                 max-payload-len
                 on-connect
-                on-disconnect
+                on-close
                 port
                 prioritized-protocols-seq
                 private-key-str]
@@ -532,7 +532,7 @@
               keepalive-interval-secs 30
               max-payload-len 65000
               on-connect (constantly nil)
-              on-disconnect (constantly nil)
+              on-close (constantly nil)
               port 8000}} config
         ssl-ctx (when (and certificate-str private-key-str)
                   (make-ssl-ctx certificate-str private-key-str))
@@ -551,7 +551,7 @@
     (log/info (str "TLS? " (boolean ssl-ctx)))
     (Security/setProperty "networkaddress.cache.ttl" (str dns-cache-secs))
     (<accept-loop port group *server-running? stop-server!
-                  on-connect on-disconnect max-payload-len
+                  on-connect on-close max-payload-len
                   disable-keepalive? keepalive-interval-secs
                   prioritized-protocols-seq)
     (u/sym-map stop-server!)))

@@ -32,6 +32,11 @@
 
   :dev {:extra-paths ["dev"]}
 
+  :pack {:extra-deps {pack/pack.alpha
+                      {:git/url "https://github.com/juxt/pack.alpha.git"
+                       :sha "b093f79420fef019faf62a75b888b5e10f4e8cc9"}}
+         :main-opts ["-m"]}
+
   :run-test-server {:main-opts ["-m" "integration.test-server"]}
 
   :run-ws-echo-server {:main-opts ["-m" "integration.ws-echo-server"]}

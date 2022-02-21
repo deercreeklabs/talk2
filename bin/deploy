@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+rm -rf target
+mkdir target
+clj -M:pack mach.pack.alpha.skinny --no-libs --project-path target/talk2.jar
+mvn deploy:deploy-file -Dfile=target/talk2.jar -DrepositoryId=clojars \
+    -Durl=https://clojars.org/repo -DpomFile=pom.xml

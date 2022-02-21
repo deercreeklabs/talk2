@@ -28,40 +28,6 @@
 (def ws-key-constant "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 (def four-zeros-ba (ba/byte-array [0 0 0 0]))
 
-;; (def max-fragment-data-len 1e4)
-
-;; (def message-type-id-schema l/long-schema)
-
-;; (l/def-record-schema keyword-schema
-;;   [:namespace l/string-schema]
-;;   [:name l/string-schema])
-
-;; (l/def-record-schema message-type-info-request-schema
-;;   [:message-type-id message-type-id-schema])
-
-;; (l/def-record-schema message-type-info-response-schema
-;;   [:message-arg-json-schema l/string-schema]
-;;   [:message-type-id message-type-id-schema]
-;;   [:message-type-keyword keyword-schema])
-
-;; (l/def-record-schema message-header-schema
-;;   [:first-fragment-data l/bytes-schema]
-;;   [:message-id l/long-schema]
-;;   [:message-type-id message-type-id-schema]
-;;   [:has-additional-fragments l/boolean-schema])
-
-;; (l/def-record-schema message-fragment-schema
-;;   [:fragment-data l/bytes-schema]
-;;   [:fragment-id l/int-schema]
-;;   [:is-last-fragment l/boolean-schema]
-;;   [:message-id l/long-schema])
-
-;; (l/def-union-schema packet-schema
-;;   message-type-info-request-schema
-;;   message-type-info-response-schema
-;;   message-header-schema
-;;   message-fragment-schema)
-
 (defmacro sym-map
   "Builds a map from symbols.
    Symbol names are turned into keywords and become the map's keys.

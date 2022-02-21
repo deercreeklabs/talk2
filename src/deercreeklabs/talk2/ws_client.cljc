@@ -15,28 +15,28 @@
    (let [{:keys [close-timeout-ms ; clj only
                  connect-timeout-ms ; clj only
                  max-payload-len ; clj only
-                 on-close
+                 on-disconnect
                  on-error
                  on-message
-                 on-open
+                 on-connect
                  on-pong ; clj only
                  protocols-seq]
           :or {close-timeout-ms 10000
                connect-timeout-ms 30000
                max-payload-len 65000
-               on-close (fn [code])
+               on-disconnect (fn [code])
                on-error (fn [e]
                           (log/error (u/ex-msg-and-stacktrace e)))
                on-message (fn [ws msg])
-               on-open (fn [ws protocol])
+               on-connect (fn [ws protocol])
                on-pong (fn [])
                protocols-seq []}} opts]
      #?(:clj (clj-ws-client/make-ws url close-timeout-ms connect-timeout-ms
                                     protocols-seq max-payload-len
-                                    on-close on-error on-message
-                                    on-open on-pong)
-        :cljs (cljs-ws-client/make-ws url protocols-seq on-close on-error
-                                      on-message on-open)))))
+                                    on-disconnect on-error on-message
+                                    on-connect on-pong)
+        :cljs (cljs-ws-client/make-ws url protocols-seq on-disconnect on-error
+                                      on-message on-connect)))))
 
 (defn close!
   ([ws]
@@ -54,21 +54,3 @@
    (send-ping! ws nil))
   ([ws payload-ba]
    ((:send! ws) :ping payload-ba (constantly nil))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(comment
-  (def opts
-    {:on-close #(log/info (str "Closing w/ code " %))
-     :on-error  #(log/info (str "Error:\n" (u/ex-msg-and-stacktrace %)))
-     :on-message #(log/info (str "Got " (count %) " bytes:\n" %))
-     :on-open (fn [protocol]
-                (log/info (if protocol
-                            (str "Connected w/ protocol `" protocol "`.")
-                            "Connected.")))
-     :on-pong #(log/info (str "Got pong frame."
-                              (when-not (empty? %)
-                                (str " Payload: "
-                                     (ba/byte-array->hex-str %)))))})
-  (def ws (websocket "wss://echo.websocket.org" opts))
-  (def ws (websocket "wss://localhost:8443" opts)))

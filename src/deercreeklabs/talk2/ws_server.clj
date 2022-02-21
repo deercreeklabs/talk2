@@ -152,10 +152,7 @@
   [rcv-ch conn unprocessed-ba* *open? *server-running?]
   (ca/go
     (try
-      (let [{:keys [<send! send! close! on-message on-ping on-pong]
-             :or {on-message (constantly nil)
-                  on-ping #(send! :pong % (constantly nil))
-                  on-pong (constantly nil)}} conn
+      (let [{:keys [<send! send! close! *on-message *on-ping *on-pong]} conn
             on-close-frame (fn []
                              (ca/go
                                (try
@@ -168,7 +165,10 @@
           (when (and @*open? @*server-running?)
             (let [ba (au/<? rcv-ch)
                   new-ba (ba/concat-byte-arrays [unprocessed-ba ba])
-                  frame-info (u/byte-array->frame-info new-ba)]
+                  frame-info (u/byte-array->frame-info new-ba)
+                  on-message (or @*on-message (constantly nil))
+                  on-ping (or @*on-ping #(send! :pong % (constantly nil)))
+                  on-pong (or @*on-pong (constantly nil))]
               (if (and (:complete-header? frame-info)
                        (:complete-payload? frame-info))
                 (if-not (:masking-key frame-info)
@@ -225,7 +225,7 @@
     ch))
 
 (defn make-conn
-  [^AsynchronousByteChannel async-nio-ch path remote-address close-conn!
+  [conn-id ^AsynchronousByteChannel async-nio-ch path remote-address close-conn!
    max-payload-len protocol]
   (let [send!* (fn [msg-type data cb]
                  (ca/go
@@ -251,7 +251,8 @@
                        (log/error (u/ex-msg-and-stacktrace e))
                        (close-conn!)
                        (cb e)))))]
-    {:close! close-conn!
+    {:conn-id conn-id
+     :close! close-conn!
      :path path
      :protocol protocol
      :remote-address remote-address
@@ -261,12 +262,15 @@
                      cb (fn [result]
                           (ca/put! ch result))]
                  (send!* msg-type data cb)
-                 ch))}))
+                 ch))
+     :*on-message (atom (constantly nil))
+     :*on-ping (atom (constantly nil))
+     :*on-pong (atom (constantly nil))}))
 
 (defn <connect
-  [async-nio-ch rcv-ch remote-address *open? *server-running? close-conn!
-   on-connect max-payload-len disable-keepalive? keepalive-interval-secs
-   prioritized-protocols-seq]
+  [async-nio-ch rcv-ch remote-address conn-id *open? *server-running?
+   close-conn! on-connect max-payload-len disable-keepalive?
+   keepalive-interval-secs prioritized-protocols-seq]
   (ca/go
     (try
       (loop [unprocessed-ba nil]
@@ -291,13 +295,13 @@
                         ret (au/<? (<send-ba! async-nio-ch rsp-ba))
                         _ (when-not ret
                             (close-conn!))
-                        conn (make-conn async-nio-ch path remote-address
-                                        close-conn! max-payload-len protocol)
-                        conn* (on-connect conn)]
-                    (<connection-loop rcv-ch conn* (:unprocessed-ba http-info)
+                        conn (make-conn conn-id async-nio-ch path remote-address
+                                        close-conn! max-payload-len protocol)]
+                    (on-connect conn)
+                    (<connection-loop rcv-ch conn (:unprocessed-ba http-info)
                                       *open? *server-running?)
                     (when-not disable-keepalive?
-                      (<keepalive-loop conn* keepalive-interval-secs
+                      (<keepalive-loop conn keepalive-interval-secs
                                        *open? *server-running?)))))))))
       (catch Exception e
         (close-conn!)
@@ -339,28 +343,30 @@
         (log/error (u/ex-msg-and-stacktrace e))))))
 
 (defn do-connect!
-  [^AsynchronousChannel async-nio-ch remote-address on-connect on-close
+  [^AsynchronousChannel async-nio-ch remote-address on-connect on-disconnect
    max-payload-len disable-keepalive? keepalive-interval-secs
-   prioritized-protocols-seq *server-running?]
+   prioritized-protocols-seq *next-conn-id *server-running?]
   (let [rcv-ch (ca/chan)
-        *on-close-called? (atom false)
+        *on-disconnect-called? (atom false)
         *open? (atom true)
+        conn-id (swap! *next-conn-id #(inc %))
         close-conn! (fn []
                       (reset! *open? false)
                       (ca/close! rcv-ch)
                       (when (.isOpen async-nio-ch)
                         (.close async-nio-ch))
-                      (when (compare-and-set! *on-close-called? false true)
-                        (on-close)))]
+                      (when (compare-and-set! *on-disconnect-called? false true)
+                        (on-disconnect (u/sym-map conn-id))))]
     (when async-nio-ch
       (<rcv-loop async-nio-ch rcv-ch close-conn! *open? *server-running?)
-      (<connect async-nio-ch rcv-ch remote-address *open? *server-running?
-                close-conn! on-connect max-payload-len disable-keepalive?
-                keepalive-interval-secs prioritized-protocols-seq))))
+      (<connect async-nio-ch rcv-ch remote-address conn-id *open?
+                *server-running? close-conn! on-connect max-payload-len
+                disable-keepalive? keepalive-interval-secs
+                prioritized-protocols-seq))))
 
 (defn <accept-loop-non-tls
-  [port group *server-running? stop-server! on-connect on-close
-   max-payload-len disable-keepalive? keepalive-interval-secs
+  [port group *next-conn-id *server-running? stop-server! on-connect
+   on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq]
   (ca/go
     (try
@@ -371,9 +377,10 @@
                  (let [remote-addr (.getRemoteAddress async-nio-ch)
                        remote-addr-str (.toString ^SocketAddress remote-addr)]
                    (do-connect! async-nio-ch remote-addr-str on-connect
-                                on-close max-payload-len disable-keepalive?
+                                on-disconnect max-payload-len disable-keepalive?
                                 keepalive-interval-secs
-                                prioritized-protocols-seq *server-running?)
+                                prioritized-protocols-seq *next-conn-id
+                                *server-running?)
                    (if @*server-running?
                      (.accept server nil this)
                      (.close server))))
@@ -392,8 +399,8 @@
         (log/error (u/ex-msg-and-stacktrace e))))))
 
 (defn <accept-loop-tls
-  [port group *server-running? stop-server! on-connect on-close
-   max-payload-len disable-keepalive? keepalive-interval-secs
+  [port group *next-conn-id *server-running? stop-server! on-connect
+   on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq]
   (ca/go
     (try
@@ -417,9 +424,9 @@
                     remote-address (.getRemoteAddress raw-nio-ch)
                     remote-addr-str (.toString ^SocketAddress remote-address)]
                 (do-connect! async-nio-ch remote-addr-str on-connect
-                             on-close max-payload-len disable-keepalive?
+                             on-disconnect max-payload-len disable-keepalive?
                              keepalive-interval-secs prioritized-protocols-seq
-                             *server-running?))))
+                             *next-conn-id *server-running?))))
           (if @*server-running?
             (recur)
             (do
@@ -454,7 +461,7 @@
                 keepalive-interval-secs
                 private-key-str
                 on-connect
-                on-close
+                on-disconnect
                 port]} config]
     (when certificate-str
       (when-not (string? certificate-str)
@@ -503,11 +510,11 @@
               (str "`:on-connect` value must be a function. Got: `"
                    on-connect "`.")
               (u/sym-map on-connect))))
-    (when (and on-close (not (ifn? on-close)))
+    (when (and on-disconnect (not (ifn? on-disconnect)))
       (throw (ex-info
-              (str "`:on-close` value must be a function. Got: `"
-                   on-close "`.")
-              (u/sym-map on-close))))
+              (str "`:on-disconnect` value must be a function. Got: `"
+                   on-disconnect "`.")
+              (u/sym-map on-disconnect))))
     (when (and port (not (integer? port)))
       (throw (ex-info
               (str "`:port` parameter must be an integer. "
@@ -524,7 +531,7 @@
                 keepalive-interval-secs
                 max-payload-len
                 on-connect
-                on-close
+                on-disconnect
                 port
                 prioritized-protocols-seq
                 private-key-str]
@@ -532,11 +539,12 @@
               keepalive-interval-secs 30
               max-payload-len 65000
               on-connect (constantly nil)
-              on-close (constantly nil)
+              on-disconnect (constantly nil)
               port 8000}} config
         ssl-ctx (when (and certificate-str private-key-str)
                   (make-ssl-ctx certificate-str private-key-str))
         group (make-group ssl-ctx)
+        *next-conn-id (atom 0)
         *server-running? (atom true)
         stop-server! (fn []
                        (if-not (compare-and-set! *server-running? true false)
@@ -550,8 +558,8 @@
     (log/info (str "Starting server on port " port "."))
     (log/info (str "TLS? " (boolean ssl-ctx)))
     (Security/setProperty "networkaddress.cache.ttl" (str dns-cache-secs))
-    (<accept-loop port group *server-running? stop-server!
-                  on-connect on-close max-payload-len
+    (<accept-loop port group *next-conn-id *server-running? stop-server!
+                  on-connect on-disconnect max-payload-len
                   disable-keepalive? keepalive-interval-secs
                   prioritized-protocols-seq)
     (u/sym-map stop-server!)))
@@ -571,6 +579,15 @@
    (send-ping! conn nil))
   ([conn payload-ba]
    ((:send! conn) :ping payload-ba (constantly nil))))
+
+(defn set-on-message! [conn f]
+  (reset! (:*on-message conn) f))
+
+(defn set-on-ping! [conn f]
+  (reset! (:*on-ping conn) f))
+
+(defn set-on-pong! [conn f]
+  (reset! (:*on-pong conn) f))
 
 
 ;; TODO: Send a close frame when server initiates a close on a connection?

@@ -265,10 +265,10 @@
 
 (defn make-ws
   [url close-timeout-ms connect-timeout-ms protocols-seq max-payload-len
-   on-close on-error on-message on-open on-pong]
+   on-disconnect on-error on-message on-connect on-pong]
   (let [^ByteBuffer rcv-buf (ByteBuffer/allocate 10000) ; bytes
         *state (atom :connecting)
-        *on-close-called? (atom nil) ; Changes to false when connected
+        *on-disconnect-called? (atom nil) ; Changes to false when connected
         *client-close-code (atom 1000)
         {:keys [scheme host port path]} (uri/uri url)
         _ (check-scheme scheme)
@@ -278,7 +278,8 @@
                 tls? 443
                 :else 80)
         path* (if (empty? path)
-                "/")
+                "/"
+                path)
         host-addr (InetSocketAddress. ^String host (int port*))
         ^SocketChannel raw-nio-ch (SocketChannel/open)
         _ (.configureBlocking raw-nio-ch false)
@@ -294,19 +295,16 @@
                    (try
                      (.close nio-ch)
                      (catch ClosedChannelException e)))
-                 (when (compare-and-set! *on-close-called? false true)
+                 (when (compare-and-set! *on-disconnect-called? false true)
                    ;; compare-and-set! fails if ws is not connected yet,
-                   ;; because *on-close-called? is set to nil until
+                   ;; because *on-disconnect-called? is set to nil until
                    ;; the connection succeeds, then it is set to false.
-                   (on-close code))
+                   (on-disconnect code))
                  nil)
         send! (fn [msg-type data]
-                (when (and (not= :close msg-type)
-                           (not= :open @*state))
-                  (throw (ex-info "WebSocket is not in :open state."
-                                  (u/sym-map url))))
-                (send-data! msg-type data nio-ch max-payload-len *state)
-                nil)
+                (when (= :open @*state)
+                  (send-data! msg-type data nio-ch max-payload-len *state)
+                  nil))
         send-close! (fn [code]
                       (send! :close
                              (u/code->byte-array code)))
@@ -349,12 +347,12 @@
               {:keys [connected? unprocessed-ba protocol]} connect-ret]
           (when connected?
             (reset! *state :open)
-            (reset! *on-close-called? false)
+            (reset! *on-disconnect-called? false)
             (<rcv-loop nio-ch rcv-buf unprocessed-ba on-conn-close
                        on-close-frame on-error (partial on-message ws)
                        on-ping on-pong close! *state)
-            (when on-open
-              (on-open ws protocol))))
+            (when on-connect
+              (on-connect (u/sym-map ws protocol)))))
         (catch Exception e
           (do-sending-close! 1001)
           (on-error e))))

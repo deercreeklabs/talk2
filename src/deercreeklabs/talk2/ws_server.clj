@@ -37,8 +37,7 @@
    (java.util.concurrent CancellationException
                          Executors)
    (javax.net.ssl KeyManagerFactory
-                  SSLContext
-                  TrustManagerFactory)
+                  SSLContext)
    (tlschannel ServerTlsChannel
                ServerTlsChannel$Builder
                TlsChannel)

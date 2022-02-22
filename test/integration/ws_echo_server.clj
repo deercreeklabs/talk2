@@ -8,12 +8,14 @@
    [taoensso.timbre :as log]))
 
 (defn get-tls-configs []
-  (let [certificate-str (some-> "server.crt" io/resource slurp)
-        private-key-str (some-> "server.key" io/resource slurp)]
+  (let [certificate-str (some-> (System/getenv "TALK2_SERVER_CERTIFICATE_FILE")
+                                (slurp))
+        private-key-str (some-> (System/getenv "TALK2_SERVER_PRIVATE_KEY_FILE")
+                                (slurp))]
     (when-not certificate-str
-      (throw (ex-info "Could not open `server.crt`." {})))
+      (throw (ex-info "Failed to load certificate file." {})))
     (when-not private-key-str
-      (throw (ex-info "Could not open `server.key`." {})))
+      (throw (ex-info "Failed to load private key file" {})))
     (u/sym-map certificate-str private-key-str)))
 
 (defn -main [port* tls?*]

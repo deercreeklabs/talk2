@@ -4,8 +4,8 @@
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.utils :as u]
-   [deercreeklabs.talk2.ws-client :as ws-client]
+   [com.deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.ws-client :as ws-client]
    [integration.bytes :as bytes]
    [taoensso.timbre :as log]))
 

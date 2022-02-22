@@ -1,4 +1,4 @@
-(ns deercreeklabs.talk2.schemas
+(ns com.deercreeklabs.talk2.schemas
   (:require
    [deercreeklabs.lancaster :as l]
    [taoensso.timbre :as log]))

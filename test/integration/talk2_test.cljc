@@ -4,8 +4,8 @@
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.client :as client]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.client :as client]
+   [com.deercreeklabs.talk2.utils :as u]
    [integration.test-protocols :as tp]
    [taoensso.timbre :as log]))
 

@@ -3,8 +3,8 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.ws-server :as ws-server]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.ws-server :as ws-server]
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
 (defn get-tls-configs []

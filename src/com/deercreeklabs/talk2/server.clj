@@ -1,11 +1,11 @@
-(ns deercreeklabs.talk2.server
+(ns com.deercreeklabs.talk2.server
   (:require
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [deercreeklabs.talk2.common :as common]
-   [deercreeklabs.talk2.schemas :as schemas]
-   [deercreeklabs.talk2.ws-server :as ws-server]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.common :as common]
+   [com.deercreeklabs.talk2.schemas :as schemas]
+   [com.deercreeklabs.talk2.ws-server :as ws-server]
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
 (defn send-packet! [conn packet]

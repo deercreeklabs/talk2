@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is]]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

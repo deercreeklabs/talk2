@@ -1,11 +1,11 @@
-(ns deercreeklabs.talk2.common
+(ns com.deercreeklabs.talk2.common
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [deercreeklabs.talk2.schemas :as schemas]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.schemas :as schemas]
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
 (def packet-magic-number 42)

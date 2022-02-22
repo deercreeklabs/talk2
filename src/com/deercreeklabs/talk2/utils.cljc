@@ -1,4 +1,4 @@
-(ns deercreeklabs.talk2.utils
+(ns com.deercreeklabs.talk2.utils
   (:require
    [clojure.core.async :as ca]
    #?(:cljs [clojure.pprint :as pprint])
@@ -10,7 +10,7 @@
    [taoensso.timbre :as log])
   #?(:cljs
      (:require-macros
-      [deercreeklabs.talk2.utils :refer [sym-map go-log go-log-helper*]]))
+      [com.deercreeklabs.talk2.utils :refer [sym-map go-log go-log-helper*]]))
   #?(:clj
      (:import
       (java.security SecureRandom)

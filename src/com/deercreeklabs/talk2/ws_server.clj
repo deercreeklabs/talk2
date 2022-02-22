@@ -1,10 +1,10 @@
-(ns deercreeklabs.talk2.ws-server
+(ns com.deercreeklabs.talk2.ws-server
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.utils :as u]
    [primitive-math]
    [taoensso.timbre :as log])
   (:import

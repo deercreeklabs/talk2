@@ -1,6 +1,6 @@
-(ns deercreeklabs.talk2.cljs-ws-client
+(ns com.deercreeklabs.talk2.cljs-ws-client
   (:require
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
 (defn make-ws

@@ -1,9 +1,9 @@
-(ns deercreeklabs.talk2.ws-client
+(ns com.deercreeklabs.talk2.ws-client
   (:require
    [deercreeklabs.baracus :as ba]
-   #?(:clj [deercreeklabs.talk2.clj-ws-client :as clj-ws-client]
-      :cljs [deercreeklabs.talk2.cljs-ws-client :as cljs-ws-client])
-   [deercreeklabs.talk2.utils :as u]
+   #?(:clj [com.deercreeklabs.talk2.clj-ws-client :as clj-ws-client]
+      :cljs [com.deercreeklabs.talk2.cljs-ws-client :as cljs-ws-client])
+   [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

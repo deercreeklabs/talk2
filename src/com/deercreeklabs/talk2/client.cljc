@@ -1,13 +1,13 @@
-(ns deercreeklabs.talk2.client
+(ns com.deercreeklabs.talk2.client
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [deercreeklabs.talk2.common :as common]
-   [deercreeklabs.talk2.schemas :as schemas]
-   [deercreeklabs.talk2.utils :as u]
-   [deercreeklabs.talk2.ws-client :as ws-client]
+   [com.deercreeklabs.talk2.common :as common]
+   [com.deercreeklabs.talk2.schemas :as schemas]
+   [com.deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.ws-client :as ws-client]
    [taoensso.timbre :as log]))
 
 (defn check-get-url [get-url]

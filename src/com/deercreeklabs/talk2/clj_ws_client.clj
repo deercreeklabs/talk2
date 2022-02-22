@@ -1,10 +1,10 @@
-(ns deercreeklabs.talk2.clj-ws-client
+(ns com.deercreeklabs.talk2.clj-ws-client
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [deercreeklabs.talk2.utils :as u]
+   [com.deercreeklabs.talk2.utils :as u]
    [lambdaisland.uri :as uri]
    [primitive-math]
    [taoensso.timbre :as log])

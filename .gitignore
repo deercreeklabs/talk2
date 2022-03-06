@@ -7,7 +7,6 @@
 /classes
 /out
 /target
-pom.xml
 
 # CLJS stuff
 .cljs_node_repl

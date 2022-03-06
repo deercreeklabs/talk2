@@ -105,7 +105,8 @@
           stored-mti)))))
 
 (defmethod <process-packet :msg
-  [{:keys [conn-id handlers msg-type-name reader-schemas writer-mti] :as arg}]
+  [{:keys [conn-id handlers msg-type-name reader-schemas server writer-mti]
+    :as arg}]
   (au/go
     (let [msg-arg (l/deserialize (:arg-schema reader-schemas)
                                  (:arg-schema writer-mti)
@@ -116,7 +117,8 @@
                                    msg-type-name "`.")
                               (u/sym-map msg-type-name))))
           ret (handler {:arg msg-arg
-                        :conn-id conn-id})]
+                        :conn-id conn-id
+                        :server server})]
       ;; We retun the handler's ret in case it's an exception
       (if (au/channel? ret)
         (au/<? ret)
@@ -149,7 +151,7 @@
 
 (defmethod <process-packet :rpc-req
   [{:keys [conn-id handlers msg-type-id msg-type-name reader-schemas
-           send-packet! writer-mti *conn-info]
+           send-packet! server writer-mti *conn-info]
     :as arg}]
   (au/go
     (let [rpc-arg (l/deserialize (:arg-schema reader-schemas)
@@ -161,7 +163,8 @@
                                    msg-type-name "`.")
                               (u/sym-map msg-type-name))))
           raw-ret (handler {:arg rpc-arg
-                            :conn-id conn-id})
+                            :conn-id conn-id
+                            :server server})
           ret (if (au/channel? raw-ret)
                 (au/<? raw-ret)
                 raw-ret)

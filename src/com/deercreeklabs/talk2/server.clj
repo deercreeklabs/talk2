@@ -37,7 +37,7 @@
    {}
    path->endpoint-info))
 
-(defn make-on-connect [{:keys [path->ep *conn-id->sender]}]
+(defn make-on-connect [{:keys [path->ep *conn-id->sender *server]}]
   (fn [{:keys [close! conn-id path] :as conn}]
     (let [*conn-info (atom common/empty-conn-info)
           ep (path->ep path)]
@@ -54,7 +54,8 @@
           (swap! *conn-id->sender assoc conn-id sender)
           (ws-server/set-on-message! conn (fn [data]
                                             (common/process-packet-data
-                                             (assoc sender :data data))))))
+                                             (assoc sender :data data
+                                                    :server @*server))))))
       (when-let [f (:on-connect ep)]
         (f conn)))))
 
@@ -64,7 +65,9 @@
   (let [*shutdown? (atom false)
         *conn-id->sender (atom {})
         path->ep (make-path->ep (u/sym-map path->endpoint-info *shutdown?))
-        on-connect (make-on-connect (u/sym-map path->ep *conn-id->sender))
+        *server (atom nil)
+        on-connect (make-on-connect
+                    (u/sym-map path->ep *conn-id->sender *server))
         on-disconnect (fn [{:keys [conn-id] :as conn}]
                         (let [sender (@*conn-id->sender conn-id)]
                           (swap! *conn-id->sender dissoc conn-id)
@@ -76,8 +79,10 @@
                                                   on-connect
                                                   port
                                                   prioritized-protocols-seq
-                                                  private-key-str))]
-    (u/sym-map ws-server *conn-id->sender *shutdown?)))
+                                                  private-key-str))
+        server (u/sym-map ws-server *conn-id->sender *shutdown?)]
+    (reset! *server server)
+    server))
 
 (defn shutdown! [server]
   (reset! (:*shutdown? server) true)

@@ -299,7 +299,10 @@
     (if-not ret-schema
       (ca/put! ret-ch true)
       (let [timeout-ms (or timeout-ms* 30000)
-            rpc-info {:cb #(ca/put! ret-ch %)
+            rpc-info {:cb (fn [ret]
+                            (if ret
+                              (ca/put! ret-ch ret)
+                              (ca/close! ret-ch)))
                       :expiry-time-ms (+ (u/current-time-ms) timeout-ms)
                       :timeout-ms timeout-ms}]
         (swap! *rpc-id->info assoc rpc-id rpc-info)))

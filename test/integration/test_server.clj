@@ -1,9 +1,6 @@
 (ns integration.test-server
   (:require
-   [clojure.core.async :as ca]
-   [clojure.java.io :as io]
    [clojure.string :as str]
-   [deercreeklabs.async-utils :as au]
    [com.deercreeklabs.talk2.server :as server]
    [com.deercreeklabs.talk2.utils :as u]
    [integration.test-protocols :as tp]

@@ -20,7 +20,7 @@
 (defn handle-sum-numbers [{:keys [arg]}]
   (apply + arg))
 
-(deftest ^:this test-messaging
+(deftest test-messaging
   (au/test-async
    10000
    (ca/go

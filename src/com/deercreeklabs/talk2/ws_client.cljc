@@ -1,5 +1,6 @@
 (ns com.deercreeklabs.talk2.ws-client
   (:require
+   [clojure.core.async :as ca]
    [deercreeklabs.baracus :as ba]
    #?(:clj [com.deercreeklabs.talk2.clj-ws-client :as clj-ws-client]
       :cljs [com.deercreeklabs.talk2.cljs-ws-client :as cljs-ws-client])
@@ -24,11 +25,11 @@
           :or {close-timeout-ms 10000
                connect-timeout-ms 30000
                max-payload-len 65000
-               on-disconnect (fn [code])
-               on-error (fn [e]
-                          (log/error (u/ex-msg-and-stacktrace e)))
-               on-message (fn [ws msg])
-               on-connect (fn [ws protocol])
+               on-disconnect (fn [{:keys [code]}])
+               on-error (fn [{:keys [error]}]
+                          (log/error (u/ex-msg-and-stacktrace error)))
+               on-message (fn [{:keys [ws msg]}])
+               on-connect (fn [{:keys [ws protocol]}])
                on-pong (fn [])
                protocols-seq []}} opts]
      #?(:clj (clj-ws-client/make-ws url close-timeout-ms connect-timeout-ms
@@ -46,8 +47,33 @@
 
 (defn send!
   [ws data]
-  (let [msg-type (u/get-msg-type data)]
-    ((:send! ws) msg-type data)))
+  (let [{:keys [get-state send!]} ws
+        max-attempts 600
+        wait-ms 100]
+    (ca/go
+      (try
+        (loop [attempts-remaining max-attempts]
+          (when (zero? attempts-remaining)
+            (throw (ex-info (str ("send! timed out waiting for websocket "
+                                  "to open. (" (* max-attempts wait-ms) "ms)"))
+                            (u/sym-map ws data wait-ms max-attempts))))
+          (case (get-state)
+            :connecting
+            (do
+              (ca/<! (ca/timeout wait-ms))
+              (recur (dec attempts-remaining)))
+
+            :open
+            (send! (u/get-msg-type data) data)
+
+            :closing
+            (throw (ex-info "send! failed because websocket is closing." {}))
+
+            :closed
+            (throw (ex-info "send! failed because websocket is closed." {}))))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error (str "Error in send!:\n"
+                          (u/ex-msg-and-stacktrace e))))))))
 
 (defn send-ping!
   ([ws]

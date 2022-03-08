@@ -166,7 +166,8 @@
                   new-ba (ba/concat-byte-arrays [unprocessed-ba ba])
                   frame-info (u/byte-array->frame-info new-ba)
                   on-message (or @*on-message (constantly nil))
-                  on-ping (or @*on-ping #(send! :pong % (constantly nil)))
+                  on-ping (or @*on-ping (fn [{:keys [data]}]
+                                          (send! :pong data (constantly nil))))
                   on-pong (or @*on-pong (constantly nil))]
               (if (and (:complete-header? frame-info)
                        (:complete-payload? frame-info))

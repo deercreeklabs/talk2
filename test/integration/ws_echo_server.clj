@@ -24,12 +24,12 @@
         on-connect (fn [conn]
                      (log/info "Conn opened")
                      (ws-server/set-on-message!
-                      conn (fn [data]
+                      conn (fn [{:keys [data]}]
                              (log/info (str "Got " (count data)
                                             " bytes:\n"  data))
                              (ws-server/send! conn data)))
                      (ws-server/set-on-pong!
-                      conn (fn [data]
+                      conn (fn [{:keys [data]}]
                              (log/info (str "Got pong frame."
                                             (when-not (empty? data)
                                               (str " Payload: "

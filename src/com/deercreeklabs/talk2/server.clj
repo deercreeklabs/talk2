@@ -52,7 +52,7 @@
                          (assoc :send-packet!
                                 (partial send-packet! conn)))]
           (swap! *conn-id->sender assoc conn-id sender)
-          (ws-server/set-on-message! conn (fn [data]
+          (ws-server/set-on-message! conn (fn [{:keys [data]}]
                                             (common/process-packet-data
                                              (assoc sender :data data
                                                     :server @*server))))))

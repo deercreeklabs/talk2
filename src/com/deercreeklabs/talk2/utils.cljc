@@ -1,5 +1,6 @@
 (ns com.deercreeklabs.talk2.utils
   (:require
+   #?(:cljs [applied-science.js-interop :as j])
    [clojure.core.async :as ca]
    #?(:cljs [clojure.pprint :as pprint])
    [clojure.string :as str]
@@ -52,15 +53,15 @@
 (defn str->int [s]
   (when (seq s)
     #?(:clj (Integer/parseInt s)
-       :cljs (js/parseInt s))))
+       :cljs (js/parseInt s 10))))
 
 (defn ex-msg [e]
   #?(:clj (.toString ^Exception e)
-     :cljs (.-message e)))
+     :cljs (j/get e :message)))
 
 (defn ex-stacktrace [e]
   #?(:clj (clojure.string/join "\n" (map str (.getStackTrace ^Exception e)))
-     :cljs (.-stack e)))
+     :cljs (j/get e :stack)))
 
 (defn ex-msg-and-stacktrace [e]
   (let [data (ex-data e)
@@ -386,14 +387,14 @@
       0 (when fin?
           (let [data (cond-> data-ba
                        (= 1 continuation-opcode) (ba/byte-array->utf8))]
-            (on-message data)))
+            (on-message {:data data})))
       1 (when fin?
-          (on-message (ba/byte-array->utf8 payload-ba)))
+          (on-message {:data (ba/byte-array->utf8 payload-ba)}))
       2 (when fin?
-          (on-message payload-ba))
+          (on-message {:data payload-ba}))
       8 (on-close-frame)
-      9 (on-ping payload-ba)
-      10 (on-pong payload-ba)
+      9 (on-ping {:data payload-ba})
+      10 (on-pong {:data payload-ba})
       (throw (ex-info (str "Bad opcode: `" opcode "`.")
                       (sym-map opcode))))
     (cond

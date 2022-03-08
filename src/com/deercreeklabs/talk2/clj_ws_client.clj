@@ -317,7 +317,9 @@
                             (send-close! code)
                             (<wait-for-conn-closure* code)
                             nil)
-        ws {:send! send!
+        ws {:get-state (fn []
+                         @*state)
+            :send! send!
             :close! (fn [code]
                       (case @*state
                         :connecting (close! code)

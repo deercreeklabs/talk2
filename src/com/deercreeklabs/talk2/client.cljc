@@ -27,10 +27,10 @@
     (loop [wait-ms 2000]
       (let [open-ch (ca/chan)
             url (get-url)
-            opts {:on-disconnect (fn [code]
+            opts {:on-disconnect (fn [{:keys [code]}]
                                    (ca/put! close-ch true)
                                    (on-disconnect (u/sym-map url code)))
-                  :on-message (fn [ws data]
+                  :on-message (fn [{:keys [ws data]}]
                                 (common/process-packet-data
                                  (-> arg
                                      (assoc :data data)

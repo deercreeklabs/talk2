@@ -4,6 +4,7 @@
  {:browser-test {:target :browser-test
                  :test-dir "resources/public/js/test"
                  :ns-regexp "-test$"
+                 ;;:ns-regexp "integration.talk2-test$"
                  :runner-ns shadow.test.browser
                  :devtools  {:http-port 8021
                              :http-root "resources/public/js/test"}}

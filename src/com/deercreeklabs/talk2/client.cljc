@@ -16,110 +16,85 @@
                          get-url "`.")
                     (u/sym-map get-url)))))
 
-(defn <connect!
-  [{:keys [close-ch get-url max-wait-interval-ms on-disconnect on-connect
-           send-ch *shutdown?]
-    :or {max-wait-interval-ms 30000
-         on-connect (constantly nil)
-         on-disconnect (constantly nil)}
+(defn start-send-loop!
+  [{:keys [*shutdown? *ws-connected? send-ch stop-sending-ch ws]}]
+  (ca/go-loop []
+    (try
+      (let [[data ch] (au/alts? [send-ch stop-sending-ch])]
+        (when (and (= send-ch ch) @*ws-connected? (not @*shutdown?))
+          (ws-client/send! ws data)))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error in send loop:\n"
+                        (u/ex-msg-and-stacktrace e)))
+        (au/<? (ca/timeout 1000))))
+    (when (and @*ws-connected? (not @*shutdown?))
+      (recur))))
+
+(defn connect!
+  [{:keys [*conn-info disconnect-notify-ch get-url on-connect on-disconnect]
     :as arg}]
-  (au/go
-    (loop [wait-ms 2000]
-      (let [open-ch (ca/chan)
-            url (get-url)
-            opts {:on-disconnect (fn [{:keys [code]}]
-                                   (ca/put! close-ch true)
-                                   (on-disconnect (u/sym-map url code)))
-                  :on-message (fn [{:keys [ws data]}]
-                                (common/process-packet-data
-                                 (-> arg
-                                     (assoc :data data)
-                                     (assoc :send-packet!
-                                            (fn [packet]
-                                              (ca/put! send-ch packet))))))
-                  :on-connect (fn [{:keys [protocol]}]
-                                (ca/put! open-ch true)
-                                (on-connect (u/sym-map protocol url)))
-                  :protocols-seq ["talk2"]}
-            ws (ws-client/websocket url opts)
-            [_ ch] (ca/alts! [open-ch (ca/timeout wait-ms)])]
-        (cond
-          @*shutdown? false
-          (= open-ch ch) ws
-          :else (do
-                  (ca/<! (ca/timeout (rand-int wait-ms)))
-                  (recur (min (* 2 wait-ms)
-                              max-wait-interval-ms))))))))
+  (let [url (get-url)
+        *ws-connected? (atom false)
+        stop-sending-ch (ca/chan)
+        opts {:on-disconnect (fn [{:keys [code]}]
+                               (reset! *conn-info nil)
+                               (reset! *ws-connected? false)
+                               (ca/put! stop-sending-ch true)
+                               (ca/put! disconnect-notify-ch true)
+                               (when on-disconnect
+                                 (on-disconnect (u/sym-map url code))))
+              :on-message (fn [{:keys [data]}]
+                            (common/process-packet-data (assoc arg :data data)))
+              :on-connect (fn [{:keys [protocol ws]}]
+                            (reset! *ws-connected? true)
+                            (start-send-loop!
+                             (-> arg
+                                 (assoc :*ws-connected? *ws-connected?)
+                                 (assoc :stop-sending-ch stop-sending-ch)
+                                 (assoc :ws ws)))
+                            (when on-connect
+                              (on-connect (u/sym-map protocol url ws))))
+              :protocols-seq ["talk2"]}
+        ws (ws-client/websocket url opts)]
+    (reset! *conn-info (assoc common/empty-conn-info :ws ws))
+    ws))
 
-(defn start-connection-loop
-  [{:keys [*conn-info *shutdown?] :as arg}]
-  (ca/go
-    (loop []
-      (try
-        (let [close-ch (ca/chan)
-              ws (au/<? (<connect! (assoc arg :close-ch close-ch)))]
-          (reset! *conn-info (assoc common/empty-conn-info :ws ws))
-          (loop []
-            (when-not @*shutdown?
-              (let [[_ ch] (ca/alts! [close-ch (ca/timeout 1000)])]
-                (if (= close-ch ch)
-                  (reset! *conn-info nil)
-                  (recur))))))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error (str "Error in connect loop:\n"
-                          (u/ex-msg-and-stacktrace e)))))
-      (ca/timeout (rand-int 2000))
-      (when-not @*shutdown?
-        (recur)))))
+(defn start-connect-loop!
+  [{:keys [*shutdown? disconnect-notify-ch] :as arg}]
+  (ca/go-loop []
+    (try
+      (connect! arg)
+      (au/<? disconnect-notify-ch)
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error in connect loop:\n"
+                        (u/ex-msg-and-stacktrace e)))
+        (au/<? (ca/timeout 1000))))
+    (when-not @*shutdown?
+      (recur))))
 
-(defn start-send-loop [{:keys [send-ch *conn-info *shutdown?]}]
-  (ca/go
-    (loop []
-      (try
-        (let [[packet ch] (ca/alts! [send-ch (ca/timeout 1000)])]
-          (when (= send-ch ch)
-            (loop []
-              (let [{:keys [ws]} @*conn-info
-                    data (ba/concat-byte-arrays
-                          [(ba/byte-array [common/packet-magic-number])
-                           (l/serialize schemas/packet-schema packet)])]
-                (cond
-                  @*shutdown? nil
-                  ws (ws-client/send! ws data)
-                  :else (do
-                          (ca/<! (ca/timeout 100))
-                          (recur)))))))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error (str "Error in send loop:\n"
-                          (u/ex-msg-and-stacktrace e)))))
-      (when-not @*shutdown?
-        (recur)))))
+(defn gc-rpcs! [{:keys [*rpc-id->info]}]
+  (let [id->info @*rpc-id->info
+        now (u/current-time-ms)
+        expired-rpc-ids (reduce-kv
+                         (fn [acc rpc-id {:keys [expiry-time-ms]}]
+                           (if (> now expiry-time-ms)
+                             (conj acc rpc-id)
+                             acc))
+                         []
+                         id->info)]
+    (doseq [rpc-id expired-rpc-ids]
+      (let [{:keys [cb timeout-ms]
+             :or {cb (constantly nil)}} (id->info rpc-id)]
+        (cb (ex-info
+             (str "RPC timed out after " timeout-ms " milliseconds.")
+             (u/sym-map rpc-id timeout-ms)))))
+    (swap! *rpc-id->info #(apply dissoc % expired-rpc-ids))))
 
-(defn start-gc-loop [{:keys [*rpc-id->info *shutdown?]}]
-  (ca/go
-    (loop []
-      (try
-        (let [id->info @*rpc-id->info
-              now (u/current-time-ms)
-              expired-rpc-ids (reduce-kv
-                               (fn [acc rpc-id {:keys [expiry-time-ms]}]
-                                 (if (> now expiry-time-ms)
-                                   (conj acc rpc-id)
-                                   acc))
-                               []
-                               id->info)]
-          (doseq [rpc-id expired-rpc-ids]
-            (let [{:keys [cb timeout-ms]
-                   :or {cb (constantly nil)}} (id->info rpc-id)]
-              (cb (ex-info
-                   (str "RPC timed out after " timeout-ms " milliseconds.")
-                   (u/sym-map rpc-id timeout-ms)))))
-          (swap! *rpc-id->info #(apply dissoc % expired-rpc-ids)))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error (str "Error in gc loop:\n"
-                          (u/ex-msg-and-stacktrace e)))))
-      (when-not @*shutdown?
-        (recur)))))
+(defn send-packet!* [send-ch *conn-info packet]
+  (let [data (ba/concat-byte-arrays
+              [(ba/byte-array [common/packet-magic-number])
+               (l/serialize schemas/packet-schema packet)])]
+    (ca/put! send-ch data)))
 
 (defn client [config]
   (let [{:keys [get-url handlers protocol]} config
@@ -131,11 +106,13 @@
         *next-rpc-id (atom 0)
         *rpc-id->info (atom {})
         *shutdown? (atom false)
+        send-packet! (partial send-packet!* send-ch *conn-info)
         {:keys [msg-type-name->msg-type-id
                 msg-type-id->msg-type-name]} (common/make-msg-type-maps
                                               protocol)
-        send-packet! #(ca/put! send-ch %)
-        client (u/sym-map msg-type-name->msg-type-id
+        disconnect-notify-ch (ca/chan)
+        client (u/sym-map disconnect-notify-ch
+                          msg-type-name->msg-type-id
                           msg-type-id->msg-type-name
                           protocol
                           send-ch
@@ -144,18 +121,21 @@
                           *next-rpc-id
                           *rpc-id->info
                           *shutdown?)]
-    (start-connection-loop (merge config client))
-    (start-send-loop client)
-    (start-gc-loop client)
+    (start-connect-loop! (merge config client))
     client))
 
 (defn shutdown! [client]
-  (when-let [ws (some-> client :*conn-info deref :ws)]
-    (ws-client/close! ws))
-  (reset! (:*shutdown? client) true))
+  (let [{:keys [*conn-info *shutdown? disconnect-notify-ch send-ch]} client
+        {:keys [ws]} @*conn-info]
+    (reset! *shutdown? true)
+    (ca/close! disconnect-notify-ch)
+    (ca/close! send-ch)
+    (when ws
+      (ws-client/close! ws))))
 
 (defn <send-msg!
   ([client msg-type-name arg]
    (common/<send-msg! client msg-type-name arg nil))
   ([client msg-type-name arg timeout-ms]
+   (gc-rpcs! client)
    (common/<send-msg! client msg-type-name arg timeout-ms)))

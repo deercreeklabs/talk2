@@ -260,7 +260,9 @@
      :<send! (fn [msg-type data]
                (let [ch (ca/chan)
                      cb (fn [result]
-                          (ca/put! ch result))]
+                          (if result
+                            (ca/put! ch result)
+                            (ca/close! ch)))]
                  (send!* msg-type data cb)
                  ch))
      :*on-message (atom (constantly nil))

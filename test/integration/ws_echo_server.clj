@@ -22,7 +22,8 @@
   (let [port (u/str->int port*)
         tls? (#{"true" "1"} (str/lower-case tls?*))
         on-connect (fn [conn]
-                     (log/info "Conn opened")
+                     (log/info (str "Conn opened: "
+                                    (select-keys conn [:conn-id])))
                      (ws-server/set-on-message!
                       conn (fn [{:keys [data]}]
                              (log/info (str "Got " (count data)
@@ -35,7 +36,9 @@
                                               (str " Payload: "
                                                    (ba/byte-array->hex-str
                                                     data))))))))
-        on-disconnect #(log/info (str "Conn closed: " %))
+        on-disconnect (fn [conn]
+                        (log/info (str "Conn closed: "
+                                       (select-keys conn [:conn-id]))))
         prioritized-protocols-seq ["talk2-2" "talk2-1"]
         config (cond-> (u/sym-map on-disconnect
                                   on-connect

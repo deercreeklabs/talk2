@@ -229,7 +229,7 @@
                        continuation-opcode))))))
       (catch Exception e
         (close! 1001)
-        (on-error e)))))
+        (on-error {:error e})))))
 
 (defn send-data! [msg-type data nio-ch max-payload-len *state]
   (reduce (fn [acc ba]
@@ -256,7 +256,7 @@
             (recur)))
         (catch Exception e
           (close! 1001)
-          (on-error))))))
+          (on-error {:error e}))))))
 
 (defn check-scheme [scheme]
   (when-not (#{"ws" "wss"} scheme)
@@ -291,6 +291,9 @@
                                        ^SSLContext (SSLContext/getDefault))))
         close! (fn [code]
                  (reset! *state :closed)
+                 (try
+                   (.close raw-nio-ch)
+                   (catch ClosedChannelException e))
                  (when tls?
                    (try
                      (.close nio-ch)
@@ -302,9 +305,12 @@
                    (on-disconnect code))
                  nil)
         send! (fn [msg-type data]
-                (when (= :open @*state)
-                  (send-data! msg-type data nio-ch max-payload-len *state)
-                  nil))
+                (let [state @*state]
+                  (when (or (= :open state)
+                            (and (= :closing state)
+                                 (= :close msg-type)))
+                    (send-data! msg-type data nio-ch max-payload-len *state)
+                    nil)))
         send-close! (fn [code]
                       (send! :close
                              (u/code->byte-array code)))
@@ -351,11 +357,11 @@
             (reset! *state :open)
             (reset! *on-disconnect-called? false)
             (<rcv-loop nio-ch rcv-buf unprocessed-ba on-conn-close
-                       on-close-frame on-error (partial on-message ws)
+                       on-close-frame on-error on-message
                        on-ping on-pong close! *state)
             (when on-connect
               (on-connect (u/sym-map ws protocol)))))
         (catch Exception e
           (do-sending-close! 1001)
-          (on-error e))))
+          (on-error {:error e}))))
     ws))

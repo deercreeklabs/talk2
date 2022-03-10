@@ -20,10 +20,12 @@
 (defn handle-sum-numbers [{:keys [arg]}]
   (apply + arg))
 
+#_
 (deftest test-messaging
   (au/test-async
    10000
    (ca/go
+     (log/info "000000")
      (let [status-update-ch (ca/chan)
            backend-connected-ch (ca/chan)
            handle-status-update (fn [{:keys [arg]}]

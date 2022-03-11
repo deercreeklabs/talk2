@@ -263,9 +263,17 @@
     (throw (ex-info (str "Bad URL scheme `" scheme "`. Must be `ws` or `wss`.")
                     (u/sym-map scheme)))))
 
-(defn make-ws
-  [url close-timeout-ms connect-timeout-ms protocols-seq max-payload-len
-   on-disconnect on-error on-message on-connect on-pong]
+(defn make-raw-websocket
+  [{:keys [close-timeout-ms
+           connect-timeout-ms
+           max-payload-len
+           on-connect
+           on-disconnect
+           on-error
+           on-message
+           on-pong
+           protocols-seq
+           url]}]
   (let [^ByteBuffer rcv-buf (ByteBuffer/allocate 10000) ; bytes
         *state (atom :connecting)
         *on-disconnect-called? (atom nil) ; Changes to false when connected

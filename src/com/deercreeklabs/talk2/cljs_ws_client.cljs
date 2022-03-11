@@ -4,11 +4,21 @@
    [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn make-ws
-  [uri protocols-seq on-disconnect on-error on-message on-connect]
-  (let [js-ws (if (empty? protocols-seq)
-                (js/WebSocket. uri)
-                (js/WebSocket. uri protocols-seq))
+(defn make-js-ws [{:keys [protocols-seq url]}]
+  (cond
+    (u/browser?) (if (empty? protocols-seq)
+                   (js/WebSocket. url)
+                   (js/WebSocket. url (clj->js protocols-seq)))
+    (u/node?) (let [WSC (js/require "ws")]
+                (if (empty? protocols-seq)
+                  (WSC. url)
+                  (WSC. url (clj->js protocols-seq))))
+    :else (throw (ex-info "Unsupported platform" {}))))
+
+(defn make-raw-websocket
+  [{:keys [on-connect on-disconnect on-error on-message protocols-seq url]
+    :as arg}]
+  (let [js-ws (make-js-ws arg)
         get-state (fn []
                     (case (j/get js-ws :readyState)
                       0 :connecting
@@ -17,10 +27,9 @@
                       3 :closed))
         ws {:get-state get-state
             :send! (fn [msg-type data]
-                     (when (= :open (get-state))
-                       (j/call js-ws :send (if (= :binary msg-type)
-                                             (j/get data :buffer)
-                                             data))))
+                     (j/call js-ws :send (if (= :binary msg-type)
+                                           (j/get data :buffer)
+                                           data)))
             :close! (fn [code]
                       (j/call js-ws :close code))}]
     (j/assoc! js-ws :binaryType "arraybuffer")

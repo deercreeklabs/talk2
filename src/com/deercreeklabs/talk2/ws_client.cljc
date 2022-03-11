@@ -15,6 +15,7 @@
   ([url opts]
    (let [{:keys [close-timeout-ms ; clj only
                  connect-timeout-ms ; clj only
+                 make-raw-websocket
                  max-payload-len ; clj only
                  on-disconnect
                  on-error
@@ -32,12 +33,13 @@
                on-connect (fn [{:keys [ws protocol]}])
                on-pong (fn [])
                protocols-seq []}} opts]
-     #?(:clj (clj-ws-client/make-ws url close-timeout-ms connect-timeout-ms
-                                    protocols-seq max-payload-len
-                                    on-disconnect on-error on-message
-                                    on-connect on-pong)
-        :cljs (cljs-ws-client/make-ws url protocols-seq on-disconnect on-error
-                                      on-message on-connect)))))
+     (let [arg (u/sym-map close-timeout-ms connect-timeout-ms max-payload-len
+                          on-connect on-disconnect on-error on-message on-pong
+                          protocols-seq url)]
+       (if make-raw-websocket
+         (make-raw-websocket arg)
+         #?(:clj (clj-ws-client/make-raw-websocket arg)
+            :cljs (cljs-ws-client/make-raw-websocket arg)))))))
 
 (defn close!
   ([ws]

@@ -13,7 +13,7 @@
                                    (l/serialize schemas/packet-schema packet)])]
     (ws-server/send! conn ba)))
 
-(defn make-ep [{:keys [handlers on-connect on-disconnect protocol *shutdown?]}]
+(defn make-ep [{:keys [handlers on-connect on-disconnect protocol *stop?]}]
   (common/check-protocol protocol)
   (let [*next-rpc-id (atom 0)
         *rpc-id->info (atom {})
@@ -28,12 +28,12 @@
                protocol
                *next-rpc-id
                *rpc-id->info
-               *shutdown?)))
+               *stop?)))
 
-(defn make-path->ep [{:keys [path->endpoint-info *shutdown?]}]
+(defn make-path->ep [{:keys [path->endpoint-info *stop?]}]
   (reduce-kv
    (fn [acc path ep-info]
-     (assoc acc path (make-ep (assoc ep-info :*shutdown? *shutdown?))))
+     (assoc acc path (make-ep (assoc ep-info :*stop? *stop?))))
    {}
    path->endpoint-info))
 
@@ -62,9 +62,9 @@
 (defn server
   [{:keys [certificate-str private-key-str path->endpoint-info port]
     :as config}]
-  (let [*shutdown? (atom false)
+  (let [*stop? (atom false)
         *conn-id->sender (atom {})
-        path->ep (make-path->ep (u/sym-map path->endpoint-info *shutdown?))
+        path->ep (make-path->ep (u/sym-map path->endpoint-info *stop?))
         *server (atom nil)
         on-connect (make-on-connect
                     (u/sym-map path->ep *conn-id->sender *server))
@@ -80,13 +80,13 @@
                                                   port
                                                   prioritized-protocols-seq
                                                   private-key-str))
-        server (u/sym-map ws-server *conn-id->sender *shutdown?)]
+        server (u/sym-map ws-server *conn-id->sender *stop?)]
     (reset! *server server)
     server))
 
-(defn shutdown! [server]
-  (reset! (:*shutdown? server) true)
-  (ws-server/stop-server! (:ws-server server)))
+(defn stop! [server]
+  (reset! (:*stop? server) true)
+  (ws-server/stop! (:ws-server server)))
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
   (let [{:keys [*conn-id->sender]} server

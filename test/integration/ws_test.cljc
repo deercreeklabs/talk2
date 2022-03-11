@@ -33,8 +33,8 @@
                 :on-connect (fn [{:keys [ws protocol] :as arg}]
                               (ca/put! connected-ch arg))
                 :protocols-seq protocols-seq}
-          ws (ws-client/websocket url opts)]
-      (when-not ws
+          ws* (ws-client/websocket url opts)]
+      (when-not ws*
         (throw (ex-info "Failed to construct WebSocket"
                         {:type :execution-error
                          :subtype :construction-failure})))
@@ -78,6 +78,7 @@
          (is (ba/equivalent-byte-arrays? msg norm-rsp)))
        #_(when tls-rsp
            (is (ba/equivalent-byte-arrays? msg tls-rsp)))))))
+
 
 (deftest test-round-trip-w-small-text-msg
   (au/test-async

@@ -248,7 +248,7 @@
              :msg-type-id->msg-type-name {}}
             (range (count protocol)))))
 
-(defn start-gc-loop [{:keys [*rpc-id->info *shutdown?]}]
+(defn start-gc-loop [{:keys [*rpc-id->info *stop?]}]
   (ca/go
     (loop []
       (try
@@ -271,7 +271,7 @@
         (catch #?(:clj Exception :cljs js/Error) e
           (log/error (str "Error in gc loop:\n"
                           (u/ex-msg-and-stacktrace e)))))
-      (when-not @*shutdown?
+      (when-not @*stop?
         (recur)))))
 
 (defn <send-msg! [sender msg-type-name arg timeout-ms*]

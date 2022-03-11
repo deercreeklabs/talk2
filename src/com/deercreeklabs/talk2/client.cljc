@@ -17,17 +17,17 @@
                     (u/sym-map get-url)))))
 
 (defn start-send-loop!
-  [{:keys [*shutdown? *ws-connected? send-ch stop-sending-ch ws]}]
+  [{:keys [*stop? *ws-connected? send-ch stop-sending-ch ws]}]
   (ca/go-loop []
     (try
       (let [[data ch] (au/alts? [send-ch stop-sending-ch])]
-        (when (and (= send-ch ch) @*ws-connected? (not @*shutdown?))
+        (when (and (= send-ch ch) @*ws-connected? (not @*stop?))
           (ws-client/send! ws data)))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in send loop:\n"
                         (u/ex-msg-and-stacktrace e)))
         (au/<? (ca/timeout 1000))))
-    (when (and @*ws-connected? (not @*shutdown?))
+    (when (and @*ws-connected? (not @*stop?))
       (recur))))
 
 (defn connect!
@@ -60,7 +60,7 @@
     ws))
 
 (defn start-connect-loop!
-  [{:keys [*shutdown? disconnect-notify-ch] :as arg}]
+  [{:keys [*stop? disconnect-notify-ch] :as arg}]
   (ca/go-loop []
     (try
       (connect! arg)
@@ -69,7 +69,7 @@
         (log/error (str "Error in connect loop:\n"
                         (u/ex-msg-and-stacktrace e)))
         (au/<? (ca/timeout 1000))))
-    (when-not @*shutdown?
+    (when-not @*stop?
       (recur))))
 
 (defn gc-rpcs! [{:keys [*rpc-id->info]}]
@@ -105,7 +105,7 @@
         *conn-info (atom nil)
         *next-rpc-id (atom 0)
         *rpc-id->info (atom {})
-        *shutdown? (atom false)
+        *stop? (atom false)
         send-packet! (partial send-packet!* send-ch *conn-info)
         {:keys [msg-type-name->msg-type-id
                 msg-type-id->msg-type-name]} (common/make-msg-type-maps
@@ -120,14 +120,14 @@
                           *conn-info
                           *next-rpc-id
                           *rpc-id->info
-                          *shutdown?)]
+                          *stop?)]
     (start-connect-loop! (merge config client))
     client))
 
-(defn shutdown! [client]
-  (let [{:keys [*conn-info *shutdown? disconnect-notify-ch send-ch]} client
+(defn stop! [client]
+  (let [{:keys [*conn-info *stop? disconnect-notify-ch send-ch]} client
         {:keys [ws]} @*conn-info]
-    (reset! *shutdown? true)
+    (reset! *stop? true)
     (ca/close! disconnect-notify-ch)
     (ca/close! send-ch)
     (when ws

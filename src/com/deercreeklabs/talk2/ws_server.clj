@@ -151,13 +151,11 @@
   [rcv-ch conn unprocessed-ba* *open? *server-running?]
   (ca/go
     (try
-      (let [{:keys [<send! send! close! *on-message *on-ping *on-pong]} conn
+      (let [{:keys [send! close! *on-message *on-ping *on-pong]} conn
             on-close-frame (fn []
-                             (ca/go
-                               (try
-                                 (au/<? (<send! :close nil))
-                                 (finally
-                                   (close!)))))]
+                             (let [cb (fn [ret]
+                                        (close!))]
+                               (send! :close nil cb)))]
         (loop [unprocessed-ba unprocessed-ba*
                continuation-ba nil
                continuation-opcode nil]
@@ -188,34 +186,32 @@
         ((:close! conn))))))
 
 (defn send-ba!
-  ([async-nio-ch ba]
-   (send-ba! async-nio-ch ba (fn [result])))
-  ([^AsynchronousByteChannel async-nio-ch ba cb]
-   (let [buf (ByteBuffer/wrap ba)
-         h (completion-handler
-            (fn on-completed [handler result]
-              (if (pos? (.remaining buf))
-                (if-not (.isOpen async-nio-ch)
-                  (cb false)
-                  (try
-                    (.write async-nio-ch buf nil handler)
-                    (catch ShutdownChannelGroupException e
-                      (cb false))
-                    (catch Exception e
-                      (cb e))))
-                (cb true)))
-            (fn on-failed [handler e]
-              (log/error (str "Error while sending. "
-                              (u/ex-msg-and-stacktrace e)))
-              (cb e)))]
-     (if-not (.isOpen async-nio-ch)
-       (cb false)
-       (try
-         (.write async-nio-ch buf nil h)
-         (catch ShutdownChannelGroupException e
-           (cb false))
-         (catch Exception e
-           (cb e)))))))
+  [^AsynchronousByteChannel async-nio-ch ba cb]
+  (let [buf (ByteBuffer/wrap ba)
+        h (completion-handler
+           (fn on-completed [handler result]
+             (if (pos? (.remaining buf))
+               (if-not (.isOpen async-nio-ch)
+                 (cb false)
+                 (try
+                   (.write async-nio-ch buf nil handler)
+                   (catch ShutdownChannelGroupException e
+                     (cb false))
+                   (catch Exception e
+                     (cb e))))
+               (cb true)))
+           (fn on-failed [handler e]
+             (log/error (str "Error while sending. "
+                             (u/ex-msg-and-stacktrace e)))
+             (cb e)))]
+    (if-not (.isOpen async-nio-ch)
+      (cb false)
+      (try
+        (.write async-nio-ch buf nil h)
+        (catch ShutdownChannelGroupException e
+          (cb false))
+        (catch Exception e
+          (cb e))))))
 
 (defn <send-ba! [async-nio-ch ba]
   (let [ch (ca/chan)
@@ -224,53 +220,40 @@
     (send-ba! async-nio-ch ba cb)
     ch))
 
+(defn <send-data! [{:keys [async-nio-ch data max-payload-len msg-type]}]
+  (au/go
+    (let [bas (u/data->frame-byte-arrays msg-type data false
+                                         max-payload-len)
+          last-i (dec (count bas))]
+      (loop [i 0]
+        (let [ba (nth bas i)
+              ret (au/<? (<send-ba! async-nio-ch ba))]
+          (cond
+            (not ret) ; channel was closed
+            (throw (ex-info "Failed to send data because channel is closed"
+                            (u/sym-map data msg-type)))
+
+            (not= last-i i)
+            (recur (inc (int i)))
+
+            :else
+            true))))))
+
 (defn make-conn
-  [conn-id ^AsynchronousByteChannel async-nio-ch path remote-address close-conn!
-   max-payload-len protocol]
-  (let [send!* (fn [msg-type data cb]
-                 (ca/go
-                   (try
-                     (let [bas (u/data->frame-byte-arrays msg-type data false
-                                                          max-payload-len)
-                           last-i (dec (count bas))]
-                       (loop [i 0]
-                         (let [ba (nth bas i)
-                               ret (au/<? (<send-ba! async-nio-ch ba))]
-                           (cond
-                             (not ret) ; channel was closed
-                             (do
-                               (close-conn!)
-                               (cb false))
-
-                             (not= last-i i)
-                             (recur (inc (int i)))
-
-                             :else
-                             (cb true)))))
-                     (catch Exception e
-                       (log/error (u/ex-msg-and-stacktrace e))
-                       (close-conn!)
-                       (cb e)))))]
-    {:conn-id conn-id
-     :close! close-conn!
-     :path path
-     :protocol protocol
-     :remote-address remote-address
-     :send! send!*
-     :<send! (fn [msg-type data]
-               (let [ch (ca/chan)
-                     cb (fn [result]
-                          (if result
-                            (ca/put! ch result)
-                            (ca/close! ch)))]
-                 (send!* msg-type data cb)
-                 ch))
-     :*on-message (atom (constantly nil))
-     :*on-ping (atom (constantly nil))
-     :*on-pong (atom (constantly nil))}))
+  [{:keys [close-conn! conn-id path protocol remote-address send-ch]}]
+  {:conn-id conn-id
+   :close! close-conn!
+   :path path
+   :protocol protocol
+   :remote-address remote-address
+   :send! (fn [msg-type data cb]
+            (ca/put! send-ch (u/sym-map msg-type data cb)))
+   :*on-message (atom (constantly nil))
+   :*on-ping (atom (constantly nil))
+   :*on-pong (atom (constantly nil))})
 
 (defn <connect
-  [async-nio-ch rcv-ch remote-address conn-id *open? *server-running?
+  [async-nio-ch rcv-ch send-ch remote-address conn-id *open? *server-running?
    close-conn! on-connect max-payload-len disable-keepalive?
    keepalive-interval-secs prioritized-protocols-seq]
   (ca/go
@@ -297,8 +280,10 @@
                         ret (au/<? (<send-ba! async-nio-ch rsp-ba))
                         _ (when-not ret
                             (close-conn!))
-                        conn (make-conn conn-id async-nio-ch path remote-address
-                                        close-conn! max-payload-len protocol)]
+                        conn (make-conn (u/sym-map close-conn! conn-id
+                                                   max-payload-len
+                                                   path protocol
+                                                   remote-address send-ch))]
                     (on-connect conn)
                     (<connection-loop rcv-ch conn (:unprocessed-ba http-info)
                                       *open? *server-running?)
@@ -342,13 +327,34 @@
         (.read async-nio-ch rcv-buf nil h))
       (catch Exception e
         (close-conn!)
-        (log/error (u/ex-msg-and-stacktrace e))))))
+        (log/error (str "Error in recieve loop:\n"
+                        (u/ex-msg-and-stacktrace e)))))))
+
+(defn <send-loop
+  [{:keys [*open? *server-running? async-nio-ch close-conn!
+           max-payload-len send-ch]}]
+  (ca/go-loop []
+    (try
+      (let [[send-info ch] (au/alts? [send-ch (ca/timeout 1000)])]
+        (when (= send-ch ch)
+          (let [{:keys [cb data msg-type]} send-info
+                ret (au/<? (<send-data! (u/sym-map async-nio-ch cb data
+                                                   max-payload-len msg-type)))]
+            (when cb
+              (cb ret)))))
+      (catch Exception e
+        (close-conn!)
+        (log/error (str "Error in send loop:\n"
+                        (u/ex-msg-and-stacktrace e)))))
+    (when (and @*open? @*server-running?)
+      (recur))))
 
 (defn do-connect!
   [^AsynchronousChannel async-nio-ch remote-address on-connect on-disconnect
    max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq *next-conn-id *server-running?]
-  (let [rcv-ch (ca/chan)
+  (let [rcv-ch (ca/chan 1000)
+        send-ch (ca/chan 1000)
         *on-disconnect-called? (atom false)
         *open? (atom true)
         conn-id (swap! *next-conn-id #(inc %))
@@ -361,7 +367,9 @@
                         (on-disconnect (u/sym-map conn-id))))]
     (when async-nio-ch
       (<rcv-loop async-nio-ch rcv-ch close-conn! *open? *server-running?)
-      (<connect async-nio-ch rcv-ch remote-address conn-id *open?
+      (<send-loop (u/sym-map *open? *server-running? async-nio-ch close-conn!
+                             max-payload-len send-ch))
+      (<connect async-nio-ch rcv-ch send-ch remote-address conn-id *open?
                 *server-running? close-conn! on-connect max-payload-len
                 disable-keepalive? keepalive-interval-secs
                 prioritized-protocols-seq))))
@@ -571,7 +579,7 @@
 
 (defn send!
   ([conn data]
-   (send! conn data (constantly nil)))
+   (send! conn data nil))
   ([conn data cb]
    (let [msg-type (u/get-msg-type data)]
      ((:send! conn) msg-type data cb))))

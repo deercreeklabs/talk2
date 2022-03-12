@@ -353,7 +353,8 @@
                            :closing (<wait-for-conn-closure*
                                      @*client-close-code)
                            :closed nil))
-        on-ping #(send! :pong %)]
+        on-ping (fn [{:keys [data]}]
+                  (send! :pong data))]
     (ca/go
       (try
         (let [connect-ret (au/<? (<connect-ws host port* path*

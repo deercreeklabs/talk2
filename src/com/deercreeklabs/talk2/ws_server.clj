@@ -548,12 +548,12 @@
         group (make-group ssl-ctx)
         *next-conn-id (atom 0)
         *server-running? (atom true)
-        stop! (fn []
-                (if-not (compare-and-set! *server-running? true false)
-                  (log/info "Server is not running.")
-                  (do
-                    (log/info "Stopping server...")
-                    ((:shutdown-now! group)))))
+        stop-server! (fn []
+                       (if-not (compare-and-set! *server-running? true false)
+                         (log/info "Server is not running.")
+                         (do
+                           (log/info "Stopping server...")
+                           ((:shutdown-now! group)))))
         <accept-loop (if ssl-ctx
                        <accept-loop-tls
                        <accept-loop-non-tls)]
@@ -567,7 +567,7 @@
     (u/sym-map stop-server!)))
 
 (defn stop! [server]
-  ((:stop! server)))
+  ((:stop-server! server)))
 
 (defn send!
   ([conn data]

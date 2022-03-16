@@ -53,7 +53,7 @@
                                  (assoc :stop-sending-ch stop-sending-ch)
                                  (assoc :ws ws)))
                             (when on-connect
-                              (on-connect (u/sym-map protocol url ws))))
+                              (on-connect (u/sym-map protocol url))))
               :protocols-seq ["talk2"]}
         ws (ws-client/websocket url opts)]
     (reset! *conn-info (assoc common/empty-conn-info :ws ws))

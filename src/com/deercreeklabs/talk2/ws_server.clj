@@ -230,8 +230,7 @@
               ret (au/<? (<send-ba! async-nio-ch ba))]
           (cond
             (not ret) ; channel was closed
-            (throw (ex-info "Failed to send data because channel is closed"
-                            (u/sym-map data msg-type)))
+            false
 
             (not= last-i i)
             (recur (inc (int i)))

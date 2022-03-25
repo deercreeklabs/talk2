@@ -376,27 +376,37 @@
                                                          ba payload-end)))))))
 
 (defn process-frame!
-  [frame-info continuation-ba continuation-opcode on-close-frame on-message
-   on-ping on-pong]
+  [{:keys [continuation-ba
+           continuation-opcode
+           frame-info
+           on-close-frame
+           on-message
+           on-ping
+           on-pong]}]
   (let [{:keys [fin? opcode payload-ba]} frame-info
         control-frame? (bit-test opcode 7)
         data-ba (when (= 0 opcode)
                   (ba/concat-byte-arrays [continuation-ba payload-ba]))]
     ;; Do effects
-    (case (int opcode)
-      0 (when fin?
-          (let [data (cond-> data-ba
-                       (= 1 continuation-opcode) (ba/byte-array->utf8))]
-            (on-message {:data data})))
-      1 (when fin?
-          (on-message {:data (ba/byte-array->utf8 payload-ba)}))
-      2 (when fin?
-          (on-message {:data payload-ba}))
-      8 (on-close-frame)
-      9 (on-ping {:data payload-ba})
-      10 (on-pong {:data payload-ba})
-      (throw (ex-info (str "Bad opcode: `" opcode "`.")
-                      (sym-map opcode))))
+    (ca/go
+      (try
+        (case (int opcode)
+          0 (when fin?
+              (let [data (cond-> data-ba
+                           (= 1 continuation-opcode) (ba/byte-array->utf8))]
+                (on-message {:data data})))
+          1 (when fin?
+              (on-message {:data (ba/byte-array->utf8 payload-ba)}))
+          2 (when fin?
+              (on-message {:data payload-ba}))
+          8 (on-close-frame)
+          9 (on-ping {:data payload-ba})
+          10 (on-pong {:data payload-ba})
+          (throw (ex-info (str "Bad opcode: `" opcode "`.")
+                          (sym-map opcode))))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error (str "Error while executing frame effects:\n"
+                          ex-msg-and-stacktrace e)))))
     (cond
       (or fin? control-frame?)
       {:continuation-ba nil
@@ -409,6 +419,33 @@
       :else
       {:continuation-ba payload-ba
        :continuation-opcode opcode})))
+
+(defn process-data!
+  [{:keys [close! server?] :as arg}]
+  (loop [ba (:ba arg)
+         continuation-ba (:continuation-ba arg)
+         continuation-opcode (:continuation-opcode arg)]
+    (let [frame-info (byte-array->frame-info ba)]
+      (cond
+        (not (and (:complete-header? frame-info)
+                  (:complete-payload? frame-info)))
+        (sym-map ba continuation-ba continuation-opcode)
+
+        (and server? (not (:masking-key frame-info)))
+        (do
+          (log/error
+           "Got frame without required masking key. Closing connection.")
+          (close!))
+
+        :else
+        (let [ret (process-frame!
+                   (assoc arg
+                          :continuation-ba continuation-ba
+                          :continuation-opcode continuation-opcode
+                          :frame-info frame-info))]
+          (recur (:unprocessed-ba frame-info)
+                 (:continuation-ba ret)
+                 (:continuation-opcode ret)))))))
 
 (defn data->frame-byte-arrays [msg-type data mask? max-payload-len]
   (let [ba (if (= :text msg-type)

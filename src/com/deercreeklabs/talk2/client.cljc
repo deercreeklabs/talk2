@@ -44,7 +44,8 @@
                                (when on-disconnect
                                  (on-disconnect (u/sym-map url code))))
               :on-message (fn [{:keys [data]}]
-                            (common/process-packet-data (assoc arg :data data)))
+                            (common/process-packet-data!
+                             (assoc arg :data data)))
               :on-connect (fn [{:keys [protocol ws]}]
                             (reset! *ws-connected? true)
                             (start-send-loop!

@@ -63,8 +63,8 @@
                       {:msg-type-name msg-type-name
                        :valid-msg-type-names (keys protocol)})))))
 
-(defmulti <process-packet (fn [{:keys [packet]}]
-                            (:packet-type packet)))
+(defmulti <process-packet! (fn [{:keys [packet]}]
+                             (:packet-type packet)))
 
 (defn xf-msg-type-info [{:keys [arg-json-schema ret-json-schema] :as info}]
   (cond-> info
@@ -104,7 +104,7 @@
           stored-mti
           stored-mti)))))
 
-(defmethod <process-packet :msg
+(defmethod <process-packet! :msg
   [{:keys [conn-id handlers msg-type-name reader-schemas server writer-mti]
     :as arg}]
   (au/go
@@ -124,7 +124,7 @@
         (au/<? ret)
         ret))))
 
-(defmethod <process-packet :msg-type-info-rsp
+(defmethod <process-packet! :msg-type-info-rsp
   [{:keys [packet *conn-info] :as arg}]
   (au/go
     (let [{:keys [msg-type-id msg-type-info]} packet]
@@ -132,7 +132,7 @@
         (swap! *conn-info assoc-in [:peer-msg-type-id->info msg-type-id]
                (xf-msg-type-info msg-type-info))))))
 
-(defmethod <process-packet :msg-type-info-req
+(defmethod <process-packet! :msg-type-info-req
   [{:keys [msg-type-id->msg-type-name protocol send-packet! *conn-info]
     :as arg}]
   (au/go
@@ -149,7 +149,7 @@
              #(assoc-in % [:my-msg-type-id->info-sent? my-msg-type-id] true))
       (send-packet! packet))))
 
-(defmethod <process-packet :rpc-req
+(defmethod <process-packet! :rpc-req
   [{:keys [conn-id handlers msg-type-id msg-type-name reader-schemas
            send-packet! server writer-mti *conn-info]
     :as arg}]
@@ -183,7 +183,7 @@
                #(assoc-in % [:my-msg-type-id->info-sent? msg-type-id] true)))
       (send-packet! packet))))
 
-(defmethod <process-packet :rpc-rsp
+(defmethod <process-packet! :rpc-rsp
   [{:keys [packet reader-schemas writer-mti *rpc-id->info] :as arg}]
   (au/go
     (let [{:keys [bytes rpc-id]} packet
@@ -192,10 +192,11 @@
                              bytes)
           {:keys [cb]} (@*rpc-id->info rpc-id)]
       (swap! *rpc-id->info dissoc rpc-id)
-      (when cb
-        (cb ret)))))
+      (if cb
+        (cb ret)
+        (log/error (str "No callback found for rpc-id `" rpc-id "`."))))))
 
-(defn process-packet-data
+(defn process-packet-data!
   [{:keys [data msg-type-name->msg-type-id protocol] :as arg}]
   (ca/go
     (try
@@ -213,7 +214,7 @@
                                          (ba/slice-byte-array data 1))
               {:keys [packet-type]} packet]
           (if (#{:msg-type-info-req :msg-type-info-rsp} packet-type)
-            (au/<? (<process-packet (assoc arg :packet packet)))
+            (au/<? (<process-packet! (assoc arg :packet packet)))
             (let [writer-mti (au/<? (<get-msg-type-info
                                      (assoc arg :packet packet)))
                   {:keys [msg-type-name]} writer-mti
@@ -225,12 +226,13 @@
                                      "` found in reader protocol.")
                                 {:msg-type-name msg-type-name
                                  :protocol-keys (keys protocol)})))
-              (au/<? (<process-packet (-> arg
-                                          (assoc :msg-type-id msg-type-id)
-                                          (assoc :msg-type-name msg-type-name)
-                                          (assoc :packet packet)
-                                          (assoc :reader-schemas reader-schemas)
-                                          (assoc :writer-mti writer-mti))))))))
+              (au/<? (<process-packet!
+                      (-> arg
+                          (assoc :msg-type-id msg-type-id)
+                          (assoc :msg-type-name msg-type-name)
+                          (assoc :packet packet)
+                          (assoc :reader-schemas reader-schemas)
+                          (assoc :writer-mti writer-mti))))))))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error processing packet:\n"
                         (u/ex-msg-and-stacktrace e)))))))

@@ -54,7 +54,7 @@
           (swap! *conn-id->info assoc conn-id {:closer close!
                                                :sender sender})
           (ws-server/set-on-message! conn (fn [{:keys [data]}]
-                                            (common/process-packet-data
+                                            (common/process-packet-data!
                                              (assoc sender :data data
                                                     :server @*server))))))
       (when-let [f (:on-connect ep)]
@@ -92,15 +92,25 @@
   (ws-server/stop! (:ws-server server)))
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
+  (when-not server
+    (throw (ex-info "Missing `:server` value in `<send-msg!` arg map")))
+  (when-not msg-type-name
+    (throw (ex-info "Missing `:msg-type-name` value in `<send-msg!` arg map")))
   (let [{:keys [*conn-id->info]} server
         {:keys [sender]} (get @*conn-id->info conn-id)]
     (if sender
       (common/<send-msg! sender msg-type-name arg timeout-ms)
-      (throw (ex-info (str "No connection found for conn-id `" conn-id "`.")
+      (throw (ex-info (str "No connection found for conn-id `"
+                           (or conn-id "nil") "`.")
                       (u/sym-map conn-id))))))
 
 (defn close-connection! [{:keys [conn-id server]}]
+  (when-not server
+    (throw (ex-info "Missing `:server` value in `close-connection!` arg map")))
   (let [{:keys [*conn-id->info]} server
         {:keys [closer]} (get @*conn-id->info conn-id)]
-    (when closer
-      (closer))))
+    (if closer
+      (closer)
+      (throw (ex-info (str "No connection found for conn-id `"
+                           (or conn-id "nil") "`.")
+                      (u/sym-map conn-id))))))

@@ -49,7 +49,7 @@
 
 (defn send!
   [ws data]
-  (let [{:keys [get-state send!]} ws
+  (let [{:keys [get-state]} ws
         max-attempts 600
         initial-wait-ms 10
         max-wait-ms 1000]
@@ -70,7 +70,7 @@
                 (recur new-wait-ms (dec attempts-remaining)))
 
               :open
-              (send! (u/get-msg-type data) data)
+              ((:send! ws) (u/get-msg-type data) data)
 
               :closing
               (throw (ex-info "send! failed because websocket is closing." {}))

@@ -140,6 +140,39 @@
                          (assoc :complete-header? true))
         _ (is (= expected-map (xf-map rt-6)))]))
 
+(deftest test-framing-w-multiple-frames
+  (let [xf-map (fn [m]
+                 (-> (dissoc m :payload-start :payload-end)
+                     (update :masking-key ba/byte-array->hex-str)
+                     (update :payload-ba ba/byte-array->hex-str)
+                     (update :unprocessed-ba ba/byte-array->hex-str)))
+        extra-str "fjaslfk!!@(234!*(jasflk"
+        extra-ba (ba/utf8->byte-array extra-str)
+        extra-hex-str (ba/byte-array->hex-str extra-ba)
+
+        m-1 {:fin? true
+             :opcode 1 ; Text
+             :payload-ba (ba/utf8->byte-array "Hello")}
+        ba-1 (u/frame-info->byte-array m-1)
+        m-2 {:fin? true
+             :opcode 1 ; Text
+             :payload-ba (ba/utf8->byte-array " World")}
+        ba-2 (u/frame-info->byte-array m-2)
+        ba (ba/concat-byte-arrays [ba-1 ba-2])
+        rt-1 (u/byte-array->frame-info ba)
+        expected-map-1 (-> m-1
+                           (assoc :complete-header? true)
+                           (assoc :complete-payload? true)
+                           (assoc :unprocessed-ba ba-2)
+                           (xf-map))
+        _ (is (= expected-map-1 (xf-map rt-1)))
+        rt-2 (u/byte-array->frame-info (:unprocessed-ba rt-1))
+        expected-map-2 (-> m-2
+                           (assoc :complete-header? true)
+                           (assoc :complete-payload? true)
+                           (xf-map))
+        _ (is (= expected-map-2 (xf-map rt-2)))]))
+
 (deftest test-framing-w-extra-bytes
   (let [xf-map (fn [m]
                  (-> (dissoc m :payload-start :payload-end)

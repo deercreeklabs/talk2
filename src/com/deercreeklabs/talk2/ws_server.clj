@@ -148,39 +148,36 @@
         ((:close! conn))))))
 
 (defn <connection-loop
-  [rcv-ch conn unprocessed-ba* *open? *server-running?]
+  [rcv-ch conn unprocessed-ba *open? *server-running?]
   (ca/go
     (try
       (let [{:keys [send! close! *on-message *on-ping *on-pong]} conn
             on-close-frame (fn []
                              (let [cb (fn [ret]
                                         (close!))]
-                               (send! :close nil cb)))]
-        (loop [unprocessed-ba unprocessed-ba*
+                               (send! :close nil cb)))
+            on-message (or @*on-message (constantly nil))
+            on-ping (or @*on-ping (fn [{:keys [data]}]
+                                    (send! :pong data (constantly nil))))
+            on-pong (or @*on-pong (constantly nil))
+            server? true]
+        (loop [ba unprocessed-ba
                continuation-ba nil
                continuation-opcode nil]
           (when (and @*open? @*server-running?)
-            (let [ba (au/<? rcv-ch)
-                  new-ba (ba/concat-byte-arrays [unprocessed-ba ba])
-                  frame-info (u/byte-array->frame-info new-ba)
-                  on-message (or @*on-message (constantly nil))
-                  on-ping (or @*on-ping (fn [{:keys [data]}]
-                                          (send! :pong data (constantly nil))))
-                  on-pong (or @*on-pong (constantly nil))]
-              (if (and (:complete-header? frame-info)
-                       (:complete-payload? frame-info))
-                (if-not (:masking-key frame-info)
-                  (close!)
-                  (let [ret (u/process-frame! frame-info continuation-ba
-                                              continuation-opcode
-                                              on-close-frame on-message on-ping
-                                              on-pong)]
-                    (recur (:unprocessed-ba frame-info)
-                           (:continuation-ba ret)
-                           (:continuation-opcode ret))))
-                (recur new-ba
-                       continuation-ba
-                       continuation-opcode))))))
+            (let [ret (u/process-data! (u/sym-map ba
+                                                  close!
+                                                  continuation-ba
+                                                  continuation-opcode
+                                                  on-close-frame
+                                                  on-message
+                                                  on-ping
+                                                  on-pong
+                                                  server?))
+                  new-ba (au/<? rcv-ch)]
+              (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
+                     (:continuation-ba ret)
+                     (:continuation-opcode ret))))))
       (catch Exception e
         (log/error (u/ex-msg-and-stacktrace e))
         ((:close! conn))))))
@@ -300,22 +297,22 @@
     (try
       (let [^ByteBuffer rcv-buf (ByteBuffer/allocate 10000)
             h (completion-handler
-               (fn on-completed [handler result]
-                 (cond
-                   (pos? result)
-                   (let [_ (.flip rcv-buf)
-                         len (.remaining rcv-buf)
-                         ba (ba/byte-array len)]
-                     (.get rcv-buf ba 0 len)
-                     (.clear rcv-buf)
-                     (ca/put! rcv-ch ba)
-                     (when (and @*open?
-                                @*server-running?
-                                (.isOpen async-nio-ch))
-                       (.read async-nio-ch rcv-buf nil handler)))
-
-                   (neg? result)
-                   (close-conn!)))
+               (fn on-completed [handler n]
+                 (try
+                   (if (neg? n)
+                     (close-conn!)
+                     (do
+                       (when (pos? n)
+                         (let [_ (.flip rcv-buf)
+                               len (.remaining rcv-buf)
+                               ba (ba/byte-array len)]
+                           (.get rcv-buf ba 0 len)
+                           (.clear rcv-buf)
+                           (ca/put! rcv-ch ba)))
+                       (when (and @*open?
+                                  @*server-running?
+                                  (.isOpen async-nio-ch))
+                         (.read async-nio-ch rcv-buf nil handler))))))
                (fn on-failed [handler e]
                  (close-conn!)
                  ;; Ignore exceptions from closing channel
@@ -326,7 +323,7 @@
         (.read async-nio-ch rcv-buf nil h))
       (catch Exception e
         (close-conn!)
-        (log/error (str "Error in recieve loop:\n"
+        (log/error (str "Error in receive loop:\n"
                         (u/ex-msg-and-stacktrace e)))))))
 
 (defn <send-loop
@@ -334,6 +331,7 @@
            max-payload-len send-ch]}]
   (ca/go-loop []
     (try
+      ;; TODO: Just close the send-ch instead of using *open?
       (let [[send-info ch] (au/alts? [send-ch (ca/timeout 1000)])]
         (when (= send-ch ch)
           (let [{:keys [cb data msg-type]} send-info
@@ -360,6 +358,7 @@
         close-conn! (fn []
                       (reset! *open? false)
                       (ca/close! rcv-ch)
+                      (ca/close! send-ch)
                       (when (.isOpen async-nio-ch)
                         (.close async-nio-ch))
                       (when (compare-and-set! *on-disconnect-called? false true)
@@ -404,8 +403,8 @@
       (catch IOException e ; happens if group is closed
         nil)
       (catch Exception e
-        (stop-server!)
-        (log/error (u/ex-msg-and-stacktrace e))))))
+        (log/error (u/ex-msg-and-stacktrace e))
+        (stop-server!)))))
 
 (defn <accept-loop-tls
   [port group *next-conn-id *server-running? stop-server! on-connect
@@ -442,8 +441,8 @@
               (.close ^ServerSocket (.socket server-nio-ch))
               (.close server-nio-ch)))))
       (catch Exception e
-        (stop-server!)
-        (log/error (u/ex-msg-and-stacktrace e))))))
+        (log/error (u/ex-msg-and-stacktrace e))
+        (stop-server!)))))
 
 (defn async-nio-ch-group []
   (let [^AsynchronousChannelProvider

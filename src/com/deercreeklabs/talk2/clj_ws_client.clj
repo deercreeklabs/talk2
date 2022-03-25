@@ -45,16 +45,12 @@
               (.write nio-ch buf)
               (catch WouldBlockException e
                 0)
-              (catch NeedsReadException e
-                0)
-              (catch NeedsWriteException e
-                0)
               (catch ClosedChannelException e
                 -1)
               (catch IOException e
                 -1))]
       (cond
-        (or (neg? n)
+        (or (neg? (int n))
             (= :closed @*state))
         false
 
@@ -95,10 +91,6 @@
                    (.read nio-ch rcv-buf)
                    (catch WouldBlockException e
                      0)
-                   (catch NeedsReadException e
-                     0)
-                   (catch NeedsWriteException e
-                     0)
                    (catch ClosedChannelException e
                      -1))]
            (cond
@@ -108,14 +100,16 @@
                              {:cause :timeout
                               :timeout timeout-ms}))
 
-             (and (not= :closed @*state)
-                  (zero? (int n)))
+             (= :closed @*state)
+             rcv-ba
+
+             (neg? (int n))
+             (on-conn-close)
+
+             (zero? (int n))
              (do
                (ca/<! (ca/timeout 10))
                (recur rcv-ba))
-
-             (neg? n)
-             (on-conn-close)
 
              :else
              (do
@@ -128,8 +122,7 @@
                      {:keys [complete? valid? ret]} (handle-ba new-rcv-ba)]
                  (cond
                    (not complete?)
-                   (when (not= :closed @*state)
-                     (recur new-rcv-ba))
+                   (recur new-rcv-ba)
 
                    valid?
                    ret
@@ -185,57 +178,43 @@
                 (throw-timeout)
                 (throw e)))))))))
 
-(defn <read-bytes
-  [nio-ch ^ByteBuffer rcv-buf on-conn-close close! *state]
-  (au/go
-    (let [handle-ba (fn [ba]
-                      {:complete? true
-                       :ret ba
-                       :valid? true})]
-      (try
-        (au/<? (<read* nio-ch rcv-buf handle-ba on-conn-close close! *state
-                       1000))
-        (catch ExceptionInfo e
-          (if (= :timeout (:cause (ex-data e)))
-            nil
-            (throw e)))))))
-
 (defn <rcv-loop
   [nio-ch rcv-buf initial-ba on-conn-close on-close-frame on-error on-message
-   on-ping on-pong close! *state]
+   on-ping on-pong close!* *state]
   (ca/go
     (try
-      (loop [unprocessed-ba initial-ba
-             continuation-ba nil
-             continuation-opcode nil]
-        (when (not= :closed @*state)
-          (let [frame-info (u/byte-array->frame-info unprocessed-ba)]
-            (if (and (:complete-header? frame-info)
-                     (:complete-payload? frame-info))
-              (let [ret (u/process-frame! frame-info continuation-ba
-                                          continuation-opcode on-close-frame
-                                          on-message on-ping on-pong)]
-                (recur (:unprocessed-ba frame-info)
-                       (:continuation-ba ret)
-                       (:continuation-opcode ret)))
-              (let [new-ba (au/<? (<read-bytes nio-ch rcv-buf on-conn-close
-                                               close! *state))
-                    new-unprocessed-ba (if new-ba
-                                         (ba/concat-byte-arrays [unprocessed-ba
-                                                                 new-ba])
-                                         unprocessed-ba)]
-                (recur new-unprocessed-ba
-                       continuation-ba
-                       continuation-opcode))))))
+      (let [handle-ba (fn [ba]
+                        {:complete? true
+                         :ret ba
+                         :valid? true})
+            close! #(close!* 1006)]
+        (loop [ba initial-ba
+               continuation-ba nil
+               continuation-opcode nil]
+          (when (not= :closed @*state)
+            (let [ret (u/process-data! (u/sym-map ba
+                                                  close!
+                                                  continuation-ba
+                                                  continuation-opcode
+                                                  on-close-frame
+                                                  on-message
+                                                  on-ping
+                                                  on-pong))
+                  new-ba (au/<? (<read* nio-ch rcv-buf handle-ba on-conn-close
+                                        close! *state))]
+              (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
+                     (:continuation-ba ret)
+                     (:continuation-opcode ret))))))
       (catch Exception e
-        (close! 1001)
+        (close!* 1001)
         (on-error {:error e})))))
 
 (defn send-data! [msg-type data nio-ch max-payload-len *state]
   (reduce (fn [acc ba]
-            (if (write-ba-to-nio-chan nio-ch ba *state)
-              acc
-              (reduced false)))
+            (let [write-ret (write-ba-to-nio-chan nio-ch ba *state)]
+              (if write-ret
+                acc
+                (reduced false))))
           true
           (u/data->frame-byte-arrays msg-type data true max-payload-len)))
 

@@ -175,9 +175,10 @@
                                                   on-pong
                                                   server?))
                   new-ba (au/<? rcv-ch)]
-              (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
-                     (:continuation-ba ret)
-                     (:continuation-opcode ret))))))
+              (when new-ba
+                (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
+                       (:continuation-ba ret)
+                       (:continuation-opcode ret)))))))
       (catch Exception e
         (log/error (u/ex-msg-and-stacktrace e))
         ((:close! conn))))))
@@ -219,8 +220,8 @@
 
 (defn <send-data! [{:keys [async-nio-ch data max-payload-len msg-type]}]
   (au/go
-    (let [bas (u/data->frame-byte-arrays msg-type data false
-                                         max-payload-len)
+    (let [data-size (count data)
+          bas (u/data->frame-byte-arrays msg-type data false max-payload-len)
           last-i (dec (count bas))]
       (loop [i 0]
         (let [ba (nth bas i)
@@ -331,9 +332,8 @@
            max-payload-len send-ch]}]
   (ca/go-loop []
     (try
-      ;; TODO: Just close the send-ch instead of using *open?
       (let [[send-info ch] (au/alts? [send-ch (ca/timeout 1000)])]
-        (when (= send-ch ch)
+        (when (and (= send-ch ch) send-info)
           (let [{:keys [cb data msg-type]} send-info
                 ret (au/<? (<send-data! (u/sym-map async-nio-ch cb data
                                                    max-payload-len msg-type)))]

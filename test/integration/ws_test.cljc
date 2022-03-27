@@ -32,6 +32,9 @@
                               (ca/put! rcv-ch data))
                 :on-connect (fn [{:keys [ws protocol] :as arg}]
                               (ca/put! connected-ch arg))
+                :on-disconnect (fn [{:keys [code]}]
+                                 (log/info (str "on-disconnect - Code: `"
+                                                code "`.")))
                 :protocols-seq protocols-seq}
           ws* (ws-client/websocket url opts)]
       (when-not ws*

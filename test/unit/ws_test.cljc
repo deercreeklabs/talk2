@@ -1,7 +1,9 @@
 (ns unit.ws-test
   (:require
+   [clojure.core.async :as ca]
    [clojure.string :as str]
    [clojure.test :refer [deftest is]]
+   [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [com.deercreeklabs.talk2.utils :as u]
    [taoensso.timbre :as log])
@@ -286,3 +288,70 @@
   (let [ws-key "dGhlIHNhbXBsZSBub25jZQ=="
         expected "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="]
     (is (= expected (u/ws-key->ws-accept-key ws-key)))))
+
+(deftest test-process-data!-short-text-msg
+  (au/test-async
+   1000
+   (au/go
+     (let [msg-ch (ca/chan)
+           data "Hi"
+           bas1 (u/data->frame-byte-arrays :text data true 50)
+           _ (is (= 1 (count bas1)))
+           arg1 {:ba (first bas1)
+                 :on-message #(ca/put! msg-ch (:data %))
+                 :server? true}
+           _ (u/process-data! arg1)
+           _ (is (= data (au/<? msg-ch)))]))))
+
+(deftest test-process-data!-fragmentation-and-continuation-frames
+  (au/test-async
+   1000
+   (au/go
+     (let [msg-ch (ca/chan)
+           max-payload-len 12
+           ;; 50 char string, will fragment
+           s "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+           bas (u/data->frame-byte-arrays :text s true max-payload-len)
+           _ (is (= 5 (count bas)))
+           arg {:ba (ba/concat-byte-arrays bas)
+                :on-message #(ca/put! msg-ch (:data %))
+                :server? true}
+           ret (u/process-data! arg)]
+       (is (= s (au/<? msg-ch)))))))
+
+(deftest test-process-data!-two-msgs
+  (au/test-async
+   1000
+   (au/go
+     (let [msg-ch (ca/chan)
+           max-payload-len 12
+           s1 "XXXXXXXXXXXXXXXXXXXX" ; 20 char string, will fragment
+           s2 "Hi"
+           bas1 (u/data->frame-byte-arrays :text s1 true max-payload-len)
+           bas2 (u/data->frame-byte-arrays :text s2 true max-payload-len)
+           _ (is (= 2 (count bas1)))
+           _ (is (= 1 (count bas2)))
+           arg {:ba (ba/concat-byte-arrays (concat bas1 bas2))
+                :on-message #(ca/put! msg-ch (:data %))
+                :server? true}
+           ret (u/process-data! arg)]
+       (is (= s1 (au/<? msg-ch)))
+       (is (= s2 (au/<? msg-ch)))))))
+
+(deftest test-process-data!-less-than-full-frame
+  (let [max-payload-len 12
+        s "12345678"
+        bas (u/data->frame-byte-arrays :text s true max-payload-len)
+        _ (is (= 1 (count bas)))
+        ba (first bas)
+        _ (is (= 14 (count ba)))
+        chunk (ba/slice-byte-array ba 0 10)
+        arg {:ba chunk
+             :server? true}
+        {:keys [continuation-ba
+                continuation-opcode
+                unprocessed-ba]} (u/process-data! arg)]
+    (is (= nil continuation-ba))
+    (is (= nil continuation-opcode))
+    (is (= 10 (count unprocessed-ba)))
+    (is (ba/equivalent-byte-arrays? chunk unprocessed-ba))))

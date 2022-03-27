@@ -92,8 +92,18 @@
                    (catch WouldBlockException e
                      0)
                    (catch ClosedChannelException e
-                     -1))]
+                     -1)
+                   (catch IOException e
+                     {:e e
+                      :ex-msg (.toString ^Exception e)}))]
            (cond
+             (:e n)
+             (if (re-find #"reset by peer" (:ex-msg n))
+               (do
+                 (on-conn-close)
+                 :closed)
+               (throw (:e n)))
+
              (and expire-ms (>= (long (u/current-time-ms)) (long expire-ms)))
              (throw (ex-info (str "Timed out waiting for message from server "
                                   " after " timeout-ms " ms.")
@@ -101,10 +111,12 @@
                               :timeout timeout-ms}))
 
              (= :closed @*state)
-             rcv-ba
+             :closed
 
              (neg? (int n))
-             (on-conn-close)
+             (do
+               (on-conn-close)
+               :closed)
 
              (zero? (int n))
              (do
@@ -202,9 +214,10 @@
                                                   on-pong))
                   new-ba (au/<? (<read* nio-ch rcv-buf handle-ba on-conn-close
                                         close! *state))]
-              (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
-                     (:continuation-ba ret)
-                     (:continuation-opcode ret))))))
+              (when (not= :closed new-ba)
+                (recur (ba/concat-byte-arrays [(:unprocessed-ba ret) new-ba])
+                       (:continuation-ba ret)
+                       (:continuation-opcode ret)))))))
       (catch Exception e
         (close!* 1001)
         (on-error {:error e})))))
@@ -289,7 +302,7 @@
                    ;; compare-and-set! fails if ws is not connected yet,
                    ;; because *on-disconnect-called? is set to nil until
                    ;; the connection succeeds, then it is set to false.
-                   (on-disconnect code))
+                   (on-disconnect (u/sym-map code)))
                  nil)
         send! (fn [msg-type data]
                 (let [state @*state]

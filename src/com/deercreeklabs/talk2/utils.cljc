@@ -117,11 +117,12 @@
             ba)
      :cljs (cond
              (node?)
-             (js/Int8Array. (js/crypto.randomBytes num-bytes))
+             (let [crypto (js/require "crypto")]
+               (js/Int8Array. (j/call crypto :randomBytes num-bytes)))
 
              (browser?)
              (let [ba (ba/byte-array num-bytes)]
-               (js/window.crypto.getRandomValues ba)
+               (j/call-in js/window [:crypto :getRandomValues] ba)
                ba)
 
              :else
@@ -167,8 +168,7 @@
 
 (defn byte-array->http-info [ba]
   (let [bv (vec ba)
-        len (count bv)
-        ba-len (count ba)]
+        len (count bv)]
     (loop [i 0
            complete? false
            headers {}
@@ -387,26 +387,24 @@
         control-frame? (bit-test opcode 7)
         data-ba (when (= 0 opcode)
                   (ba/concat-byte-arrays [continuation-ba payload-ba]))]
-    ;; Do effects
-    (ca/go
-      (try
-        (case (int opcode)
-          0 (when fin?
-              (let [data (cond-> data-ba
-                           (= 1 continuation-opcode) (ba/byte-array->utf8))]
-                (on-message {:data data})))
-          1 (when fin?
-              (on-message {:data (ba/byte-array->utf8 payload-ba)}))
-          2 (when fin?
-              (on-message {:data payload-ba}))
-          8 (on-close-frame)
-          9 (on-ping {:data payload-ba})
-          10 (on-pong {:data payload-ba})
-          (throw (ex-info (str "Bad opcode: `" opcode "`.")
-                          (sym-map opcode))))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error (str "Error while executing frame effects:\n"
-                          ex-msg-and-stacktrace e)))))
+    (try
+      (case (int opcode)
+        0 (when fin?
+            (let [data (cond-> data-ba
+                         (= 1 continuation-opcode) (ba/byte-array->utf8))]
+              (on-message {:data data})))
+        1 (when fin?
+            (on-message {:data (ba/byte-array->utf8 payload-ba)}))
+        2 (when fin?
+            (on-message {:data payload-ba}))
+        8 (on-close-frame)
+        9 (on-ping {:data payload-ba})
+        10 (on-pong {:data payload-ba})
+        (throw (ex-info (str "Bad opcode: `" opcode "`.")
+                        (sym-map opcode))))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error while executing frame effects:\n"
+                        (ex-msg-and-stacktrace e)))))
     (cond
       (or fin? control-frame?)
       {:continuation-ba nil
@@ -429,7 +427,9 @@
       (cond
         (not (and (:complete-header? frame-info)
                   (:complete-payload? frame-info)))
-        (sym-map ba continuation-ba continuation-opcode)
+        {:continuation-ba continuation-ba
+         :continuation-opcode continuation-opcode
+         :unprocessed-ba ba}
 
         (and server? (not (:masking-key frame-info)))
         (do

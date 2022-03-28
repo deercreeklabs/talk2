@@ -4,13 +4,13 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.1.5</version>
+  <version>0.1.6</version>
   <name>talk2</name>
   <dependencies>
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.10.3</version>
+      <version>1.11.0</version>
     </dependency>
     <dependency>
       <groupId>mvxcvi</groupId>

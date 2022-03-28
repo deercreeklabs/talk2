@@ -10,6 +10,10 @@
    [com.deercreeklabs.talk2.ws-client :as ws-client]
    [taoensso.timbre :as log]))
 
+(def default-max-reconnect-wait-ms 30000)
+(def default-min-reconnect-wait-ms 1000)
+(def default-reconnect-wait-ms-backoff-factor 3)
+
 (defn check-get-url [get-url]
   (when-not (fn? get-url)
     (throw (ex-info (str "Invalid `:get-url` fn in client config. Got `"
@@ -31,7 +35,12 @@
       (recur))))
 
 (defn connect!
-  [{:keys [*conn-info disconnect-notify-ch get-url on-connect on-disconnect]
+  [{:keys [*conn-info
+           *reconnect-wait-ms
+           disconnect-notify-ch
+           get-url
+           min-reconnect-wait-ms
+           on-connect on-disconnect]
     :as arg}]
   (let [url (get-url)
         *ws-connected? (atom false)
@@ -48,6 +57,7 @@
                              (assoc arg :data data)))
               :on-connect (fn [{:keys [protocol ws]}]
                             (reset! *ws-connected? true)
+                            (reset! *reconnect-wait-ms min-reconnect-wait-ms)
                             (start-send-loop!
                              (-> arg
                                  (assoc :*ws-connected? *ws-connected?)
@@ -61,15 +71,24 @@
     ws))
 
 (defn start-connect-loop!
-  [{:keys [*stop? disconnect-notify-ch] :as arg}]
+  [{:keys [*reconnect-wait-ms
+           *stop?
+           disconnect-notify-ch
+           max-reconnect-wait-ms
+           reconnect-wait-ms-backoff-factor] :as arg}]
   (ca/go-loop []
     (try
       (connect! arg)
       (au/<? disconnect-notify-ch)
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in connect loop:\n"
-                        (u/ex-msg-and-stacktrace e)))
-        (au/<? (ca/timeout 1000))))
+                        (u/ex-msg-and-stacktrace e)))))
+    (au/<? (ca/timeout @*reconnect-wait-ms))
+    ;; If the ws connects, it resets *reconnect-wait-ms to the min value.
+    ;; This happens in `on-connect`.
+    (swap! *reconnect-wait-ms (fn [old-ms]
+                                (min (* reconnect-wait-ms-backoff-factor old-ms)
+                                     max-reconnect-wait-ms)))
     (when-not @*stop?
       (recur))))
 
@@ -97,14 +116,38 @@
                (l/serialize schemas/packet-schema packet)])]
     (ca/put! send-ch data)))
 
-(defn client [config]
-  (let [{:keys [get-url handlers protocol]} config
+(defn add-reconnect-options [config]
+  (reduce (fn [acc [k default]]
+            (if-let [v (get config k)]
+              (do
+                (when-not (number? v)
+                  (throw (ex-info (str "The value for key `" k
+                                       "` must be a number. Got `" v "`.")
+                                  (u/sym-map k v))))
+                (when-not (pos? v)
+                  (throw (ex-info (str "The value for key `" k
+                                       "` must be a positive number. Got `"
+                                       v "`.")
+                                  (u/sym-map k v)))))
+              (assoc acc k default)))
+          config
+          [[:max-reconnect-wait-ms
+            default-max-reconnect-wait-ms]
+           [:min-reconnect-wait-ms
+            default-min-reconnect-wait-ms]
+           [:reconnect-wait-ms-backoff-factor
+            default-reconnect-wait-ms-backoff-factor]]))
+
+(defn client [config*]
+  (let [config (add-reconnect-options config*)
+        {:keys [get-url handlers protocol]} config
         _ (check-get-url get-url)
         _ (common/check-handlers (u/sym-map protocol handlers))
         _ (common/check-protocol protocol)
         send-ch (ca/chan 1000)
         *conn-info (atom nil)
         *next-rpc-id (atom 0)
+        *reconnect-wait-ms (atom (:min-reconnect-wait-ms config))
         *rpc-id->info (atom {})
         *stop? (atom false)
         send-packet! (partial send-packet!* send-ch *conn-info)
@@ -120,6 +163,7 @@
                           send-packet!
                           *conn-info
                           *next-rpc-id
+                          *reconnect-wait-ms
                           *rpc-id->info
                           *stop?)]
     (start-connect-loop! (merge config client))

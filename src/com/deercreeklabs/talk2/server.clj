@@ -1,5 +1,6 @@
 (ns com.deercreeklabs.talk2.server
   (:require
+   [clojure.string :as str]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [com.deercreeklabs.talk2.common :as common]
@@ -13,7 +14,7 @@
                                    (l/serialize schemas/packet-schema packet)])]
     (ws-server/send! conn ba)))
 
-(defn make-ep [{:keys [handlers on-connect on-disconnect protocol *stop?]}]
+(defn make-ep [{:keys [handlers on-connect on-disconnect protocol]}]
   (common/check-protocol protocol)
   (let [*next-rpc-id (atom 0)
         *rpc-id->info (atom {})
@@ -27,20 +28,12 @@
                on-disconnect
                protocol
                *next-rpc-id
-               *rpc-id->info
-               *stop?)))
+               *rpc-id->info)))
 
-(defn make-path->ep [{:keys [path->endpoint-info *stop?]}]
-  (reduce-kv
-   (fn [acc path ep-info]
-     (assoc acc path (make-ep (assoc ep-info :*stop? *stop?))))
-   {}
-   path->endpoint-info))
-
-(defn make-on-connect [{:keys [path->ep *conn-id->info *server]}]
+(defn make-on-connect [{:keys [*path->ep *conn-id->info *server]}]
   (fn [{:keys [close! conn-id path] :as conn}]
     (let [*conn-info (atom common/empty-conn-info)
-          ep (path->ep path)]
+          ep (@*path->ep path)]
       (if-not ep
         (do
           (log/error (str "No matching endpoint found for path `" path
@@ -63,14 +56,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn server
-  [{:keys [certificate-str private-key-str path->endpoint-info port]
+  [{:keys [certificate-str private-key-str port]
     :as config}]
   (let [*stop? (atom false)
         *conn-id->info (atom {})
-        path->ep (make-path->ep (u/sym-map path->endpoint-info *stop?))
+        *path->ep (atom {})
         *server (atom nil)
         on-connect (make-on-connect
-                    (u/sym-map path->ep *conn-id->info *server))
+                    (u/sym-map *path->ep *conn-id->info *server))
         on-disconnect (fn [{:keys [conn-id] :as conn}]
                         (let [{:keys [sender]} (get @*conn-id->info conn-id)]
                           (swap! *conn-id->info dissoc conn-id)
@@ -83,13 +76,23 @@
                                                   port
                                                   prioritized-protocols-seq
                                                   private-key-str))
-        server (u/sym-map ws-server *conn-id->info *stop?)]
+        server (u/sym-map *conn-id->info *path->ep *stop? ws-server)]
     (reset! *server server)
     server))
 
 (defn stop! [server]
   (reset! (:*stop? server) true)
   (ws-server/stop! (:ws-server server)))
+
+(defn add-endpoint!
+  [{:keys [handlers on-connect on-disconnect path protocol server]
+    :as ep-info}]
+  (when-not (str/starts-with? path "/")
+    (throw (ex-info (str "`:path` must start with `/` (a slash). Got `"
+                         (or path "nil") "`.")
+                    (u/sym-map path))))
+  (let [{:keys [*path->ep]} server]
+    (swap! *path->ep assoc path (make-ep ep-info))))
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
   (when-not server

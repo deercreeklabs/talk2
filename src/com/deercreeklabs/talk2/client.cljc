@@ -40,7 +40,8 @@
            disconnect-notify-ch
            get-url
            min-reconnect-wait-ms
-           on-connect on-disconnect]
+           on-connect
+           on-disconnect]
     :as arg}]
   (let [url (get-url)
         *ws-connected? (atom false)

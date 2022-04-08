@@ -33,18 +33,20 @@
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
-        *server (atom nil)
         *backend-conn-id (atom nil)
+        config (cond-> {:port (u/str->int port-str)}
+                 tls? (merge (get-tls-configs)))
+        server (server/server config)
         client-ep-info {:handlers {:offset-and-sum-numbers
                                    #(<handle-oasn
                                      (-> %
-                                         (assoc :server @*server)
+                                         (assoc :server server)
                                          (assoc :backend-conn-id
                                                 @*backend-conn-id)))
 
                                    :request-status-update
                                    #(handle-request-status-update
-                                     (assoc % :server @*server))}
+                                     (assoc % :server server))}
                         :on-connect (fn [conn]
                                       (log/info
                                        (str "Client connection opened:\n"
@@ -57,8 +59,9 @@
                                           (str "Client connection closed:\n"
                                                (u/pprint-str
                                                 (select-keys conn [:conn-id])))))
-
-                        :protocol tp/client-gateway-protocol}
+                        :path "/client"
+                        :protocol tp/client-gateway-protocol
+                        :server server}
         be-ep-info {:on-connect (fn [{:keys [conn-id] :as conn}]
                                   (reset! *backend-conn-id conn-id)
                                   (log/info
@@ -72,11 +75,8 @@
                                       (str "Backend connection closed:\n"
                                            (u/pprint-str
                                             (select-keys conn [:conn-id])))))
-                    :protocol tp/backend-gateway-protocol}
-
-        config (cond-> {:path->endpoint-info {"/client" client-ep-info
-                                              "/backend" be-ep-info}
-                        :port (u/str->int port-str)}
-                 tls? (merge (get-tls-configs)))
-        server (server/server config)]
-    (reset! *server server)))
+                    :path "/backend"
+                    :protocol tp/backend-gateway-protocol
+                    :server server}]
+    (server/add-endpoint! client-ep-info)
+    (server/add-endpoint! be-ep-info)))

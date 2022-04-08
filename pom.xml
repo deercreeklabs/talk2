@@ -60,7 +60,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.9.14</version>
+      <version>0.9.15</version>
     </dependency>
   </dependencies>
   <build>

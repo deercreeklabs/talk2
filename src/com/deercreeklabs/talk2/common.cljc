@@ -149,39 +149,54 @@
              #(assoc-in % [:my-msg-type-id->info-sent? my-msg-type-id] true))
       (send-packet! packet))))
 
+(defn send-rpc-rsp!
+  [{:keys [*conn-info bytes msg-type-id msg-type-name
+           packet packet-type reader-schemas send-packet!]}]
+  (let [info-sent? (get-in @*conn-info
+                           [:my-msg-type-id->info-sent? msg-type-id])
+        info {:arg-json-schema (some-> reader-schemas :arg-schema l/json)
+              :msg-type-name msg-type-name
+              :ret-json-schema (some-> reader-schemas :ret-schema l/json)}
+        packet {:bytes bytes
+                :msg-type-id msg-type-id
+                :msg-type-info (when-not info-sent? info)
+                :packet-type packet-type
+                :rpc-id (:rpc-id packet)}]
+    (when-not info-sent?
+      (swap! *conn-info
+             #(assoc-in % [:my-msg-type-id->info-sent? msg-type-id] true)))
+    (send-packet! packet)))
+
 (defmethod <process-packet! :rpc-req
-  [{:keys [conn-id handlers msg-type-id msg-type-name reader-schemas
+  [{:keys [conn-id handlers msg-type-id msg-type-name packet reader-schemas
            send-packet! server writer-mti *conn-info]
     :as arg}]
   (au/go
-    (let [rpc-arg (l/deserialize (:arg-schema reader-schemas)
-                                 (:arg-schema writer-mti)
-                                 (-> arg :packet :bytes))
-          handler (get handlers msg-type-name)
-          _ (when-not handler
-              (throw (ex-info (str "No handler found for msg type name `"
-                                   msg-type-name "`.")
-                              (u/sym-map msg-type-name))))
-          raw-ret (handler {:arg rpc-arg
-                            :conn-id conn-id
-                            :server server})
-          ret (if (au/channel? raw-ret)
-                (au/<? raw-ret)
-                raw-ret)
-          info-sent? (get-in @*conn-info
-                             [:my-msg-type-id->info-sent? msg-type-id])
-          info {:arg-json-schema (some-> reader-schemas :arg-schema l/json)
-                :msg-type-name msg-type-name
-                :ret-json-schema (some-> reader-schemas :ret-schema l/json)}
-          packet {:bytes (l/serialize (:ret-schema reader-schemas) ret)
-                  :msg-type-id msg-type-id
-                  :msg-type-info (when-not info-sent? info)
-                  :packet-type :rpc-rsp
-                  :rpc-id (-> arg :packet :rpc-id)}]
-      (when-not info-sent?
-        (swap! *conn-info
-               #(assoc-in % [:my-msg-type-id->info-sent? msg-type-id] true)))
-      (send-packet! packet))))
+    (try
+      (let [rpc-arg (l/deserialize (:arg-schema reader-schemas)
+                                   (:arg-schema writer-mti)
+                                   (:bytes packet))
+            handler (get handlers msg-type-name)
+            _ (when-not handler
+                (throw (ex-info (str "No handler found for msg type name `"
+                                     msg-type-name "`.")
+                                (u/sym-map msg-type-name))))
+            raw-ret (handler {:arg rpc-arg
+                              :conn-id conn-id
+                              :server server})
+            ret (if (au/channel? raw-ret)
+                  (au/<? raw-ret)
+                  raw-ret)
+            ret-bytes (l/serialize (:ret-schema reader-schemas) ret)]
+        (send-rpc-rsp! (-> arg
+                           (assoc :packet-type :rpc-rsp)
+                           (assoc :bytes ret-bytes))))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "RPC failed. msg-type-name: `" msg-type-name "`. "
+                        "msg-type-id: `" msg-type-id "`. "
+                        "rpc-id: `" (:rpc-id packet) "`.\n"
+                        (u/ex-msg-and-stacktrace e)))
+        (send-rpc-rsp! (assoc arg :packet-type :rpc-err-rsp))))))
 
 (defmethod <process-packet! :rpc-rsp
   [{:keys [packet reader-schemas writer-mti *rpc-id->info] :as arg}]
@@ -192,9 +207,25 @@
                              bytes)
           {:keys [cb]} (@*rpc-id->info rpc-id)]
       (swap! *rpc-id->info dissoc rpc-id)
-      (if cb
-        (cb ret)
-        (log/error (str "No callback found for rpc-id `" rpc-id "`."))))))
+      (if-not cb
+        (log/error (str "No callback found for rpc-id `" rpc-id "`."))
+        (cb ret)))))
+
+(defmethod <process-packet! :rpc-err-rsp
+  [{:keys [msg-type-id msg-type-name packet
+           reader-schemas writer-mti *rpc-id->info]
+    :as arg}]
+  (au/go
+    (let [{:keys [rpc-id]} packet
+          {:keys [cb]} (@*rpc-id->info rpc-id)]
+      (swap! *rpc-id->info dissoc rpc-id)
+      (if-not cb
+        (log/error (str "No callback found for rpc-id `" rpc-id "`."))
+        (cb (ex-info (str "RPC failed. msg-type-name: `" msg-type-name "`. "
+                          "msg-type-id: `" msg-type-id "`. "
+                          "rpc-id: `" rpc-id "`.\n See peer log "
+                          "for more information.\n")
+                     (u/sym-map msg-type-name msg-type-id rpc-id)))))))
 
 (defn process-packet-data!
   [{:keys [data msg-type-name->msg-type-id protocol] :as arg}]
@@ -279,9 +310,9 @@
       (ca/put! ret-ch true)
       (let [timeout-ms (or timeout-ms* 30000)
             rpc-info {:cb (fn [ret]
-                            (if ret
-                              (ca/put! ret-ch ret)
-                              (ca/close! ret-ch)))
+                            (if (nil? ret)
+                              (ca/close! ret-ch)
+                              (ca/put! ret-ch ret)))
                       :expiry-time-ms (+ (u/current-time-ms) timeout-ms)
                       :timeout-ms timeout-ms}]
         (swap! *rpc-id->info assoc rpc-id rpc-info)))

@@ -111,6 +111,17 @@
              (u/sym-map rpc-id timeout-ms)))))
     (swap! *rpc-id->info #(apply dissoc % expired-rpc-ids))))
 
+(defn start-gc-loop! [{:keys [*stop?] :as arg}]
+  (ca/go-loop []
+    (try
+      (gc-rpcs! arg)
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error in gc loop:\n"
+                        (u/ex-msg-and-stacktrace e)))))
+    (au/<? (ca/timeout 1000))
+    (when-not @*stop?
+      (recur))))
+
 (defn send-packet!* [send-ch *conn-info packet]
   (let [data (ba/concat-byte-arrays
               [(ba/byte-array [common/packet-magic-number])
@@ -168,6 +179,7 @@
                           *rpc-id->info
                           *stop?)]
     (start-connect-loop! (merge config client))
+    (start-gc-loop! client)
     client))
 
 (defn stop! [client]
@@ -183,5 +195,4 @@
   ([client msg-type-name arg]
    (common/<send-msg! client msg-type-name arg nil))
   ([client msg-type-name arg timeout-ms]
-   (gc-rpcs! client)
    (common/<send-msg! client msg-type-name arg timeout-ms)))

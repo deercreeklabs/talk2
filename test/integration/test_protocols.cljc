@@ -10,7 +10,9 @@
   {:offset-and-sum-numbers {:arg-schema offset-and-sum-numbers-arg-schema
                             :ret-schema l/int-schema}
    :request-status-update {:arg-schema l/null-schema}
-   :status-update {:arg-schema l/string-schema}})
+   :status-update {:arg-schema l/string-schema}
+   :throw-if-even {:arg-schema l/int-schema
+                   :ret-schema l/boolean-schema}})
 
 (def backend-gateway-protocol
   {:sum-numbers {:arg-schema (l/array-schema l/int-schema)

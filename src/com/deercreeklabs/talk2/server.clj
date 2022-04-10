@@ -87,12 +87,29 @@
 (defn add-endpoint!
   [{:keys [handlers on-connect on-disconnect path protocol server]
     :as ep-info}]
+  (when-not (string? path)
+    (throw (ex-info (str "`:path` must be a string. Got `"
+                         (or path "nil") "`.")
+                    (u/sym-map path))))
   (when-not (str/starts-with? path "/")
     (throw (ex-info (str "`:path` must start with `/` (a slash). Got `"
                          (or path "nil") "`.")
                     (u/sym-map path))))
   (let [{:keys [*path->ep]} server]
+    (when (@*path->ep path)
+      (throw (ex-info (str "The path `" path "` is already associated with "
+                           "an endpoint.")
+                      (u/sym-map path))))
     (swap! *path->ep assoc path (make-ep ep-info))))
+
+(defn remove-endpoint!
+  [{:keys [path server]}]
+  (let [{:keys [*path->ep]} server]
+    (when-not (@*path->ep path)
+      (throw (ex-info (str "There is no endpoint at path `" (or path "nil")
+                           "`.")
+                      (u/sym-map path))))
+    (swap! *path->ep dissoc path)))
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
   (when-not server

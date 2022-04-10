@@ -37,16 +37,22 @@
         config (cond-> {:port (u/str->int port-str)}
                  tls? (merge (get-tls-configs)))
         server (server/server config)
-        client-ep-info {:handlers {:offset-and-sum-numbers
-                                   #(<handle-oasn
-                                     (-> %
-                                         (assoc :server server)
-                                         (assoc :backend-conn-id
-                                                @*backend-conn-id)))
+        client-handlers {:offset-and-sum-numbers
+                         #(<handle-oasn
+                           (-> %
+                               (assoc :server server)
+                               (assoc :backend-conn-id
+                                      @*backend-conn-id)))
 
-                                   :request-status-update
-                                   #(handle-request-status-update
-                                     (assoc % :server server))}
+                         :request-status-update
+                         #(handle-request-status-update
+                           (assoc % :server server))
+
+                         :throw-if-even
+                         #(if (even? (:arg %))
+                            (throw (ex-info "Even!" {}))
+                            false)}
+        client-ep-info {:handlers client-handlers
                         :on-connect (fn [conn]
                                       (log/info
                                        (str "Client connection opened:\n"

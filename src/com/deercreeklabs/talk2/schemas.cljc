@@ -7,6 +7,7 @@
   :msg
   :msg-type-info-req
   :msg-type-info-rsp
+  :rpc-err-rsp
   :rpc-req
   :rpc-rsp)
 

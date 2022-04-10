@@ -20,7 +20,7 @@
 (defn handle-sum-numbers [{:keys [arg]}]
   (apply + arg))
 
-(deftest test-messaging
+(deftest ^:this test-messaging
   (au/test-async
    10000
    (ca/go
@@ -50,9 +50,16 @@
                _ (is (= expected oasn-rsp))
                _ (is (= true (au/<? (client/<send-msg!
                                      client :request-status-update nil))))
-               [v ch] (ca/alts! [status-update-ch (ca/timeout 5000)])]
-           (is (= status-update-ch ch))
-           (is (= "On time" v)))
+               [v ch] (ca/alts! [status-update-ch (ca/timeout 5000)])
+               _ (is (= status-update-ch ch))
+               _ (is (= "On time" v))
+               ret (au/<? (client/<send-msg! client :throw-if-even 1))
+               _ (is (= false ret))]
+           (try
+             (au/<? (client/<send-msg! client :throw-if-even 2))
+             (is (= :should-throw :but-didnt))
+             (catch #?(:clj Exception :cljs js/Error) e
+               (is (= :should-throw :should-throw)))))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))
            (is (= :threw :but-should-not-have)))

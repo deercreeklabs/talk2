@@ -193,6 +193,6 @@
 
 (defn <send-msg!
   ([client msg-type-name arg]
-   (common/<send-msg! client msg-type-name arg nil))
+   (<send-msg! client msg-type-name arg nil))
   ([client msg-type-name arg timeout-ms]
    (common/<send-msg! client msg-type-name arg timeout-ms)))

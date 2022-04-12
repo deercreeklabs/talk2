@@ -25,8 +25,10 @@
 (set! *warn-on-reflection* true)
 (primitive-math/use-primitive-operators)
 
-(defn make-upgrade-req-ba [host port path ws-key protocols-seq]
-  (let [lines (cond-> [(str "GET " path " HTTP/1.1")
+(defn make-upgrade-req-ba [host port path query ws-key protocols-seq]
+  (let [lines (cond-> [(str "GET " path
+                            (when (seq query) (str "?" query))
+                            " HTTP/1.1")
                        (str "Host: " host ":" port)
                        "User-Agent: talk2.client"
                        "Upgrade: websocket"
@@ -146,17 +148,18 @@
                      (close! 1002))))))))))))
 
 (defn <connect-ws
-  [host port path timeout-ms protocols-seq ^SocketChannel raw-nio-ch nio-ch
-   ^ByteBuffer rcv-buf on-conn-close close! *state]
+  [host port path query timeout-ms protocols-seq ^SocketChannel raw-nio-ch
+   nio-ch ^ByteBuffer rcv-buf on-conn-close close! *state]
   (au/go
     (let [expire-ms (+ (long (u/current-time-ms)) (long timeout-ms))
           throw-timeout #(throw (ex-info
                                  (str "Timed out connecting to host `" host
                                       "` after " timeout-ms " ms.")
-                                 (u/sym-map timeout-ms host port path)))
+                                 (u/sym-map timeout-ms host port path
+                                            query)))
           ws-key (-> (u/secure-random-byte-array 16)
                      (ba/byte-array->b64))
-          upgrade-req-ba (make-upgrade-req-ba host port path ws-key
+          upgrade-req-ba (make-upgrade-req-ba host port path query ws-key
                                               protocols-seq)
           expected-ws-accept (u/ws-key->ws-accept-key ws-key)]
       ;; Wait for socket connection
@@ -270,7 +273,7 @@
         *state (atom :connecting)
         *on-disconnect-called? (atom nil) ; Changes to false when connected
         *client-close-code (atom 1000)
-        {:keys [scheme host port path]} (uri/uri url)
+        {:keys [scheme host port path query]} (uri/uri url)
         _ (check-scheme scheme)
         tls? (= "wss" scheme)
         port* (cond
@@ -349,7 +352,7 @@
                   (send! :pong data))]
     (ca/go
       (try
-        (let [connect-ret (au/<? (<connect-ws host port* path*
+        (let [connect-ret (au/<? (<connect-ws host port* path* query
                                               connect-timeout-ms protocols-seq
                                               raw-nio-ch nio-ch rcv-buf
                                               on-conn-close close! *state))

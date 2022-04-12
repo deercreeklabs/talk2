@@ -7,6 +7,7 @@
    [com.deercreeklabs.talk2.schemas :as schemas]
    [com.deercreeklabs.talk2.ws-server :as ws-server]
    [com.deercreeklabs.talk2.utils :as u]
+   [lambdaisland.uri :as uri]
    [taoensso.timbre :as log]))
 
 (defn send-packet! [conn packet]
@@ -33,10 +34,12 @@
 (defn make-on-connect [{:keys [*path->ep *conn-id->info *server]}]
   (fn [{:keys [close! conn-id path] :as conn}]
     (let [*conn-info (atom common/empty-conn-info)
-          ep (@*path->ep path)]
+          unadorned-path (-> path uri/uri :path)
+          ep (@*path->ep unadorned-path)]
       (if-not ep
         (do
-          (log/error (str "No matching endpoint found for path `" path
+          ;; TODO: Return a 404
+          (log/error (str "No matching endpoint found for path `" unadorned-path
                           "`. Closing connection."))
           (close!))
         (let [sender (-> ep
@@ -95,21 +98,23 @@
     (throw (ex-info (str "`:path` must start with `/` (a slash). Got `"
                          (or path "nil") "`.")
                     (u/sym-map path))))
-  (let [{:keys [*path->ep]} server]
-    (when (@*path->ep path)
-      (throw (ex-info (str "The path `" path "` is already associated with "
-                           "an endpoint.")
-                      (u/sym-map path))))
-    (swap! *path->ep assoc path (make-ep ep-info))))
+  (let [{:keys [*path->ep]} server
+        unadorned-path (-> path uri/uri :path)]
+    (when (@*path->ep unadorned-path)
+      (throw (ex-info (str "The path `" unadorned-path "` is already "
+                           "associated with an endpoint.")
+                      (u/sym-map unadorned-path path))))
+    (swap! *path->ep assoc unadorned-path (make-ep ep-info))))
 
 (defn remove-endpoint!
   [{:keys [path server]}]
-  (let [{:keys [*path->ep]} server]
+  (let [{:keys [*path->ep]} server
+        unadorned-path (-> path uri/uri :path)]
     (when-not (@*path->ep path)
-      (throw (ex-info (str "There is no endpoint at path `" (or path "nil")
-                           "`.")
-                      (u/sym-map path))))
-    (swap! *path->ep dissoc path)))
+      (throw (ex-info (str "There is no endpoint at path `"
+                           (or unadorned-path "nil") "`.")
+                      (u/sym-map unadorned-path path))))
+    (swap! *path->ep dissoc unadorned-path)))
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
   (when-not server

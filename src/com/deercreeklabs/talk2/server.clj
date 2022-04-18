@@ -118,9 +118,11 @@
 
 (defn <send-msg! [{:keys [arg conn-id msg-type-name server timeout-ms]}]
   (when-not server
-    (throw (ex-info "Missing `:server` value in `<send-msg!` arg map")))
+    (throw (ex-info "Missing `:server` value in `<send-msg!` arg map"
+                    {})))
   (when-not msg-type-name
-    (throw (ex-info "Missing `:msg-type-name` value in `<send-msg!` arg map")))
+    (throw (ex-info "Missing `:msg-type-name` value in `<send-msg!` arg map"
+                    {})))
   (let [{:keys [*conn-id->info]} server
         {:keys [sender]} (get @*conn-id->info conn-id)]
     (if sender
@@ -131,7 +133,8 @@
 
 (defn close-connection! [{:keys [conn-id server]}]
   (when-not server
-    (throw (ex-info "Missing `:server` value in `close-connection!` arg map")))
+    (throw (ex-info "Missing `:server` value in `close-connection!` arg map"
+                    {})))
   (let [{:keys [*conn-id->info]} server
         {:keys [closer]} (get @*conn-id->info conn-id)]
     (if closer

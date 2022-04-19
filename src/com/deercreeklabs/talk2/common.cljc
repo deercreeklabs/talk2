@@ -282,8 +282,13 @@
             (range (count protocol)))))
 
 (defn <send-msg! [sender msg-type-name arg timeout-ms*]
-  (let [{:keys [msg-type-name->msg-type-id protocol send-packet!
-                *conn-info *next-rpc-id *rpc-id->info]} sender
+  (let [{:keys [msg-type-name->msg-type-id protocol
+                send-packet! sender-type *conn-info
+                *next-rpc-id *rpc-id->info *stop?]} sender
+        _ (when @*stop?
+            (throw (ex-info (str "Can't send msg because " sender-type
+                                 " is stopped.")
+                            (u/sym-map msg-type-name sender-type))))
         info (protocol msg-type-name)
         _ (when-not info
             (throw (ex-info (str "No msg type named `" (or msg-type-name "nil")

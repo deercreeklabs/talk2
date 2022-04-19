@@ -126,7 +126,10 @@
   (let [{:keys [*conn-id->info]} server
         {:keys [sender]} (get @*conn-id->info conn-id)]
     (if sender
-      (common/<send-msg! sender msg-type-name arg timeout-ms)
+      (common/<send-msg! (-> sender
+                             (assoc :*stop? (:*stop? server))
+                             (assoc :sender-type "server"))
+                         msg-type-name arg timeout-ms)
       (throw (ex-info (str "No connection found for conn-id `"
                            (or conn-id "nil") "`.")
                       (u/sym-map conn-id))))))

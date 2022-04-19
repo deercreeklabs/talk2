@@ -167,12 +167,14 @@
                 msg-type-id->msg-type-name]} (common/make-msg-type-maps
                                               protocol)
         disconnect-notify-ch (ca/chan)
+        sender-type "client"
         client (u/sym-map disconnect-notify-ch
                           msg-type-name->msg-type-id
                           msg-type-id->msg-type-name
                           protocol
                           send-ch
                           send-packet!
+                          sender-type
                           *conn-info
                           *next-rpc-id
                           *reconnect-wait-ms

@@ -72,7 +72,7 @@
 
 (defn current-time-ms []
   #?(:clj (System/currentTimeMillis)
-     :cljs(.fromNumber ^Long Long (.getTime (js/Date.)))))
+     :cljs (.getTime (js/Date.))))
 
 (defmacro go-log-helper* [ex-type body]
   `(try

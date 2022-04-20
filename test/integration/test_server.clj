@@ -31,13 +31,19 @@
                       :msg-type-name :status-update
                       :server server}))
 
+(defn handle-count-bytes [{:keys [arg]}]
+  (count arg))
+
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
         *backend-conn-id (atom nil)
         config (cond-> {:port (u/str->int port-str)}
                  tls? (merge (get-tls-configs)))
         server (server/server config)
-        client-handlers {:offset-and-sum-numbers
+        client-handlers {:count-bytes
+                         handle-count-bytes
+
+                         :offset-and-sum-numbers
                          #(<handle-oasn
                            (-> %
                                (assoc :server server)

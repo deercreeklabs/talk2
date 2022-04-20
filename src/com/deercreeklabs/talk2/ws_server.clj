@@ -309,11 +309,14 @@
                                ba (ba/byte-array len)]
                            (.get rcv-buf ba 0 len)
                            (.clear rcv-buf)
-                           (ca/put! rcv-ch ba)))
-                       (when (and @*open?
-                                  @*server-running?
-                                  (.isOpen async-nio-ch))
-                         (.read async-nio-ch rcv-buf nil handler))))))
+                           (ca/put! rcv-ch ba
+                                    (fn [open?]
+                                      (when (and open?
+                                                 @*open?
+                                                 @*server-running?
+                                                 (.isOpen async-nio-ch))
+                                        (.read async-nio-ch rcv-buf
+                                               nil handler))))))))))
                (fn on-failed [handler e]
                  (close-conn!)
                  ;; Ignore exceptions from closing channel

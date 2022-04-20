@@ -636,3 +636,9 @@
 
 (def bytes-1M
   (ba/concat-byte-arrays (repeat 10 bytes-100K)))
+
+(def bytes-10M
+  (ba/concat-byte-arrays (repeat 10 bytes-1M)))
+
+(def bytes-100M
+  (ba/concat-byte-arrays (repeat 10 bytes-10M)))

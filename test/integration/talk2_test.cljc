@@ -6,6 +6,7 @@
    [deercreeklabs.baracus :as ba]
    [com.deercreeklabs.talk2.client :as client]
    [com.deercreeklabs.talk2.utils :as u]
+   [integration.bytes :as bytes]
    [integration.test-protocols :as tp]
    [taoensso.timbre :as log]))
 
@@ -20,9 +21,9 @@
 (defn handle-sum-numbers [{:keys [arg]}]
   (apply + arg))
 
-(deftest ^:this test-messaging
+(deftest test-messaging
   (au/test-async
-   10000
+   30000
    (ca/go
      (let [status-update-ch (ca/chan)
            backend-connected-ch (ca/chan)
@@ -41,6 +42,9 @@
        (try
          (let [[_ ch] (ca/alts! [backend-connected-ch (ca/timeout 5000)])
                _ (is (= backend-connected-ch ch))
+               _ (is (= 10000000 (au/<? (client/<send-msg!
+                                         client :count-bytes
+                                         bytes/bytes-10M))))
                numbers [2 3 8 2 3]
                offset 3
                arg (u/sym-map numbers offset)

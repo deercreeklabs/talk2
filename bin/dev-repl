@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-clj -M:cider-clj:cider-nrepl:dev
+clj -M:cider-clj:cider-nrepl:dev:test:test-kaocha

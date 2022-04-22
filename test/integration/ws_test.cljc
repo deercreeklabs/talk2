@@ -124,3 +124,47 @@
        (is (not= nil rsp))
        (when rsp
          (is (= msg rsp)))))))
+
+(deftest test-repeated-round-trip-w-large-bin-msg
+  (au/test-async
+   40000
+   (au/go
+     (let [rcv-ch (ca/chan)
+           connected-ch (ca/chan)
+           opts {:on-error (fn [{:keys [error]}]
+                             (ca/put! rcv-ch error))
+                 :on-message (fn [{:keys [ws data]}]
+                               (if (nil? data)
+                                 (ca/close! rcv-ch)
+                                 (ca/put! rcv-ch data)))
+                 :on-connect (fn [{:keys [ws protocol] :as arg}]
+                               (ca/put! connected-ch arg))
+                 :on-disconnect (fn [{:keys [code]}]
+                                  (log/info (str "on-disconnect - Code: `"
+                                                 code "`.")))}
+           ws (ws-client/websocket normal-url opts)
+           connect-timeout-ms 3000
+           timeout-ch (ca/timeout connect-timeout-ms)
+           [{:keys [ws protocol]} ch] (au/alts? [connected-ch timeout-ch])
+           rcv-timeout-ms 20000
+           msg bytes/bytes-100K
+           num-iters 4]
+       (if (= timeout-ch ch)
+         (throw (ex-info "WebSocket failed to connect in time."
+                         (u/sym-map connect-timeout-ms)))
+         (try
+           (dotimes [i num-iters]
+             (ws-client/send! ws msg))
+           (dotimes [i num-iters]
+             (let [[ret ch] (au/alts? [rcv-ch (ca/timeout rcv-timeout-ms)])]
+               (if (= rcv-ch ch)
+                 (is (ba/equivalent-byte-arrays? msg ret))
+                 (throw (ex-info "Timed out waiting for client response"
+                                 {:type :execution-error
+                                  :subtype :timeout
+                                  :timeout rcv-timeout-ms})))))
+           (catch #?(:clj Exception :cljs js/Error) e
+             (log/error (u/ex-msg-and-stacktrace e))
+             (is (= :threw :but-should-not-have)))
+           (finally
+             (ws-client/close! ws))))))))

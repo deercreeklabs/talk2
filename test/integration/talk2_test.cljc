@@ -23,10 +23,11 @@
   (apply + arg))
 
 (comment (kaocha.repl/run #'test-messaging))
+
 (deftest test-messaging
   (au/test-async
    30000
-   (ca/go
+   (au/go
      (let [status-update-ch (ca/chan)
            backend-connected-ch (ca/chan)
            handle-status-update (fn [{:keys [arg]}]
@@ -73,40 +74,24 @@
            (client/stop! client)
            (client/stop! be-client)))))))
 
-(comment
- (au/<??
-  (au/go
-   (let [status-update-ch (ca/chan)
-         backend-connected-ch (ca/chan)
-         handle-status-update (fn [{:keys [arg]}]
-                                (ca/put! status-update-ch arg))
-         client-config {:get-url (constantly "ws://localhost:8080/client")
-                        :handlers {:status-update handle-status-update}
-                        :protocol tp/client-gateway-protocol}
-         client (client/client client-config)
-         be-config {:get-url (constantly "ws://localhost:8080/backend")
-                    :handlers {:sum-numbers handle-sum-numbers}
-                    :protocol tp/backend-gateway-protocol
-                    :on-connect (fn [info]
-                                  (ca/put! backend-connected-ch true))}
-         be-client (client/client be-config)]
-     (try
-      (let [[_ ch] (ca/alts! [backend-connected-ch (ca/timeout 5000)])
-            _ (log/info (= backend-connected-ch ch))
-            _ (log/info "before")
-            chans (mapv (fn [x]
-                          (client/<send-msg!
-                           client :count-bytes bytes/bytes-10M))
-                        (range 2))
-            _ (log/info (count chans))
-            _ (log/info "after")
-            _ (doseq [c chans]
-                (log/info "got one")
-                (au/<? c))])
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error (u/ex-msg-and-stacktrace e))
-        (log/info :threw :but-should-not-have))
-      (finally
-       (client/stop! client)
-       (client/stop! be-client))))))
- )
+(deftest test-concurrent-msgs
+  (au/test-async
+   30000
+   (au/go
+     (let [client-config {:get-url (constantly "ws://localhost:8080/client")
+                          :protocol tp/client-gateway-protocol}
+           client (client/client client-config)]
+       (try
+         (let [msg bytes/bytes-10M
+               chans (mapv (fn [x]
+                             (client/<send-msg! client :count-bytes msg))
+                           (range 10))
+               merged-ch (ca/merge chans)
+               _ (dotimes [i (count chans)]
+                   (let [ret (au/<? merged-ch)]
+                     (is (= (count msg) ret))))])
+         (catch #?(:clj Exception :cljs js/Error) e
+           (log/error (u/ex-msg-and-stacktrace e))
+           (is (= :threw :but-should-not-have)))
+         (finally
+           (client/stop! client)))))))

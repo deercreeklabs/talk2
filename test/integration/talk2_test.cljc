@@ -6,6 +6,7 @@
    [deercreeklabs.baracus :as ba]
    [com.deercreeklabs.talk2.client :as client]
    [com.deercreeklabs.talk2.utils :as u]
+   #?(:clj [kaocha.repl])
    [integration.bytes :as bytes]
    [integration.test-protocols :as tp]
    [taoensso.timbre :as log]))
@@ -21,10 +22,12 @@
 (defn handle-sum-numbers [{:keys [arg]}]
   (apply + arg))
 
+(comment (kaocha.repl/run #'test-messaging))
+
 (deftest test-messaging
   (au/test-async
    30000
-   (ca/go
+   (au/go
      (let [status-update-ch (ca/chan)
            backend-connected-ch (ca/chan)
            handle-status-update (fn [{:keys [arg]}]
@@ -70,3 +73,25 @@
          (finally
            (client/stop! client)
            (client/stop! be-client)))))))
+
+(deftest test-concurrent-msgs
+  (au/test-async
+   30000
+   (au/go
+     (let [client-config {:get-url (constantly "ws://localhost:8080/client")
+                          :protocol tp/client-gateway-protocol}
+           client (client/client client-config)]
+       (try
+         (let [msg bytes/bytes-10M
+               chans (mapv (fn [x]
+                             (client/<send-msg! client :count-bytes msg))
+                           (range 10))
+               merged-ch (ca/merge chans)
+               _ (dotimes [i (count chans)]
+                   (let [ret (au/<? merged-ch)]
+                     (is (= (count msg) ret))))])
+         (catch #?(:clj Exception :cljs js/Error) e
+           (log/error (u/ex-msg-and-stacktrace e))
+           (is (= :threw :but-should-not-have)))
+         (finally
+           (client/stop! client)))))))

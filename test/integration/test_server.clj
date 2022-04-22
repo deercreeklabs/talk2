@@ -92,3 +92,12 @@
                     :server server}]
     (server/add-endpoint! client-ep-info)
     (server/add-endpoint! be-ep-info)))
+
+(comment
+ (defonce *ts (atom nil))
+ (defn reset []
+   (when @*ts
+     (server/stop! @*ts))
+   (reset! *ts (-main "8080" "false"))
+   :ready)
+ (reset))

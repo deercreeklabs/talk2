@@ -199,8 +199,6 @@
                      (cb e))))
                (cb true)))
            (fn on-failed [handler e]
-             (log/error (str "Error while sending. "
-                             (u/ex-msg-and-stacktrace e)))
              (cb e)))]
     (if-not (.isOpen async-nio-ch)
       (cb false)
@@ -287,6 +285,8 @@
                     (when-not disable-keepalive?
                       (<keepalive-loop conn keepalive-interval-secs
                                        *open? *server-running?)))))))))
+      (catch AsynchronousCloseException e
+        (close-conn!))
       (catch Exception e
         (close-conn!)
         (log/error (u/ex-msg-and-stacktrace e))))))
@@ -342,6 +342,8 @@
                                                    max-payload-len msg-type)))]
             (when cb
               (cb ret)))))
+      (catch AsynchronousCloseException e
+        (close-conn!))
       (catch Exception e
         (close-conn!)
         (log/error (str "Error in send loop:\n"

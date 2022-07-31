@@ -20,7 +20,7 @@
     <dependency>
       <groupId>com.github.marianobarrios</groupId>
       <artifactId>tls-channel</artifactId>
-      <version>0.6.0</version>
+      <version>0.6.2</version>
     </dependency>
     <dependency>
       <groupId>primitive-math</groupId>
@@ -50,7 +50,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>baracus</artifactId>
-      <version>0.3.2</version>
+      <version>0.3.4</version>
     </dependency>
     <dependency>
       <groupId>lambdaisland</groupId>
@@ -60,7 +60,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.9.17</version>
+      <version>0.9.19</version>
     </dependency>
   </dependencies>
   <build>

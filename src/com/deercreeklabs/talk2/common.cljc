@@ -285,44 +285,45 @@
   (let [{:keys [msg-type-name->msg-type-id protocol
                 send-packet! sender-type *conn-info
                 *next-rpc-id *rpc-id->info *stop?]} sender
-        _ (when @*stop?
-            (throw (ex-info (str "Can't send msg because " sender-type
-                                 " is stopped.")
-                            (u/sym-map msg-type-name sender-type))))
-        info (protocol msg-type-name)
-        _ (when-not info
-            (throw (ex-info (str "No msg type named `" (or msg-type-name "nil")
-                                 "` found in protocol.")
-                            {:msg-type-name msg-type-name
-                             :protocol-keys (keys protocol)})))
-        {:keys [arg-schema ret-schema]} info
-        msg-type-id (msg-type-name->msg-type-id msg-type-name)
-        bytes (l/serialize arg-schema arg)
-        info-sent? (get-in @*conn-info [:msg-type-id->info msg-type-id])
-        msg-type-info (when-not info-sent?
-                        {:arg-json-schema (l/json arg-schema)
-                         :msg-type-name msg-type-name
-                         :ret-json-schema (when ret-schema
-                                            (l/json ret-schema))})
-        rpc-id (when ret-schema
-                 (swap! *next-rpc-id inc))
-        packet-type (if ret-schema
-                      :rpc-req
-                      :msg)
-        packet (u/sym-map bytes msg-type-info msg-type-id packet-type rpc-id)
         ret-ch (ca/chan)]
-    (if-not ret-schema
-      (ca/put! ret-ch true)
-      (let [timeout-ms (or timeout-ms* 30000)
-            rpc-info {:cb (fn [ret]
-                            (if (nil? ret)
-                              (ca/close! ret-ch)
-                              (ca/put! ret-ch ret)))
-                      :expiry-time-ms (+ (u/current-time-ms) timeout-ms)
-                      :timeout-ms timeout-ms}]
-        (swap! *rpc-id->info assoc rpc-id rpc-info)))
-    (send-packet! packet)
-    (when-not info-sent?
-      (swap! *conn-info
-             #(assoc-in % [:msg-type-id->info msg-type-id :info-sent?] true)))
+    (if @*stop?
+      (ca/close! ret-ch)
+      (let [info (protocol msg-type-name)
+            _ (when-not info
+                (throw (ex-info (str "No msg type named `"
+                                     (or msg-type-name "nil")
+                                     "` found in protocol.")
+                                {:msg-type-name msg-type-name
+                                 :protocol-keys (keys protocol)})))
+            {:keys [arg-schema ret-schema]} info
+            msg-type-id (msg-type-name->msg-type-id msg-type-name)
+            bytes (l/serialize arg-schema arg)
+            info-sent? (get-in @*conn-info [:msg-type-id->info msg-type-id])
+            msg-type-info (when-not info-sent?
+                            {:arg-json-schema (l/json arg-schema)
+                             :msg-type-name msg-type-name
+                             :ret-json-schema (when ret-schema
+                                                (l/json ret-schema))})
+            rpc-id (when ret-schema
+                     (swap! *next-rpc-id inc))
+            packet-type (if ret-schema
+                          :rpc-req
+                          :msg)
+            packet (u/sym-map bytes msg-type-info msg-type-id
+                              packet-type rpc-id)]
+        (if-not ret-schema
+          (ca/put! ret-ch true)
+          (let [timeout-ms (or timeout-ms* 30000)
+                rpc-info {:cb (fn [ret]
+                                (if (nil? ret)
+                                  (ca/close! ret-ch)
+                                  (ca/put! ret-ch ret)))
+                          :expiry-time-ms (+ (u/current-time-ms) timeout-ms)
+                          :timeout-ms timeout-ms}]
+            (swap! *rpc-id->info assoc rpc-id rpc-info)))
+        (send-packet! packet)
+        (when-not info-sent?
+          (swap! *conn-info
+                 #(assoc-in % [:msg-type-id->info msg-type-id :info-sent?]
+                            true)))))
     ret-ch))

@@ -168,30 +168,32 @@
           (>= (long (u/current-time-ms)) (long expire-ms))
           (throw-timeout)
 
-          (not (.finishConnect raw-nio-ch))
+          (when (.isOpen raw-nio-ch)
+            (not (.finishConnect raw-nio-ch)))
           (do
-            (ca/<! (ca/timeout 100))
-            (recur))))
-      (if-not (write-ba-to-nio-chan nio-ch upgrade-req-ba *state)
-        (on-conn-close)
-        (let [handle-ba (fn [ba]
-                          (let [rsp-info (u/byte-array->http-info ba)
-                                info (upgrade-info rsp-info expected-ws-accept)
-                                {:keys [valid? complete? protocol]} info
-                                ret {:connected? true
-                                     :protocol protocol
-                                     :unprocessed-ba (:unprocessed-ba
-                                                      rsp-info)}]
-                            (u/sym-map complete? valid? ret)))
-              remaining-timeout-ms (- (long expire-ms)
-                                      (long (u/current-time-ms)))]
-          (try
-            (au/<? (<read* nio-ch rcv-buf handle-ba on-conn-close close! *state
-                           remaining-timeout-ms))
-            (catch ExceptionInfo e
-              (if (= :timeout (:cause (ex-data e)))
-                (throw-timeout)
-                (throw e)))))))))
+           (ca/<! (ca/timeout 100))
+           (recur))))
+      (when (.isOpen raw-nio-ch)
+        (if-not (write-ba-to-nio-chan nio-ch upgrade-req-ba *state)
+          (on-conn-close)
+          (let [handle-ba (fn [ba]
+                            (let [rsp-info (u/byte-array->http-info ba)
+                                  info (upgrade-info rsp-info expected-ws-accept)
+                                  {:keys [valid? complete? protocol]} info
+                                  ret {:connected? true
+                                       :protocol protocol
+                                       :unprocessed-ba (:unprocessed-ba
+                                                        rsp-info)}]
+                              (u/sym-map complete? valid? ret)))
+                remaining-timeout-ms (- (long expire-ms)
+                                        (long (u/current-time-ms)))]
+            (try
+             (au/<? (<read* nio-ch rcv-buf handle-ba on-conn-close close! *state
+                            remaining-timeout-ms))
+             (catch ExceptionInfo e
+               (if (= :timeout (:cause (ex-data e)))
+                 (throw-timeout)
+                 (throw e))))))))))
 
 (defn <rcv-loop
   [nio-ch rcv-buf initial-ba on-conn-close on-close-frame on-error on-message

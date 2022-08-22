@@ -4,7 +4,7 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.2.8</version>
+  <version>0.2.9</version>
   <name>talk2</name>
   <dependencies>
     <dependency>
@@ -40,7 +40,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>async-utils</artifactId>
-      <version>0.1.25</version>
+      <version>0.1.26</version>
     </dependency>
     <dependency>
       <groupId>com.taoensso</groupId>

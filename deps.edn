@@ -3,7 +3,7 @@
   com.fzakaria/slf4j-timbre {:mvn/version "0.3.21"}
   com.github.marianobarrios/tls-channel {:mvn/version "0.6.2"}
   com.taoensso/timbre {:mvn/version "5.2.1"}
-  deercreeklabs/async-utils {:mvn/version "0.1.26"}
+  deercreeklabs/async-utils {:mvn/version "0.1.27"}
   deercreeklabs/baracus {:mvn/version "0.3.4"}
   deercreeklabs/lancaster {:mvn/version "0.9.19"}
   lambdaisland/uri {:mvn/version "1.13.95"}

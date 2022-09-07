@@ -21,6 +21,7 @@
                       AsynchronousCloseException
                       AsynchronousServerSocketChannel
                       AsynchronousSocketChannel
+                      ClosedChannelException
                       CompletionHandler
                       ServerSocketChannel
                       ShutdownChannelGroupException
@@ -103,10 +104,10 @@
 (defn request-info [{:keys [headers first-line]}]
   (let [[method path http-version] (str/split first-line #"\s")
         proper-upgrade-req? (and (= "GET" method)
-                                 (= "websocket" (-> (:upgrade headers)
-                                                    (str/lower-case)))
-                                 (= "upgrade" (-> (:connection headers)
-                                                  (str/lower-case)))
+                                 (= "websocket" (some-> (:upgrade headers)
+                                                        (str/lower-case)))
+                                 (= "upgrade" (some-> (:connection headers)
+                                                      (str/lower-case)))
                                  (= "13" (:sec-websocket-version headers)))
         ws-key (:sec-websocket-key headers)
         make-set (fn [protocols]
@@ -343,6 +344,8 @@
             (when cb
               (cb ret)))))
       (catch AsynchronousCloseException e
+        (close-conn!))
+      (catch ClosedChannelException e
         (close-conn!))
       (catch Exception e
         (close-conn!)

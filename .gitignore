@@ -16,4 +16,5 @@ package-lock.json
 /resources/public/js/test/
 
 # Certs
-*.pem
+/*.pem
+/*.p12

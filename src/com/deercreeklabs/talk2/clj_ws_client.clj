@@ -11,7 +11,7 @@
   (:import
    (clojure.lang ExceptionInfo)
    (java.io IOException)
-   (java.net InetSocketAddress)
+   (java.net InetSocketAddress SocketException)
    (java.nio ByteBuffer)
    (java.nio.channels ClosedChannelException
                       ByteChannel
@@ -94,6 +94,8 @@
                    (catch WouldBlockException e
                      0)
                    (catch ClosedChannelException e
+                     -1)
+                   (catch SocketException e
                      -1)
                    (catch IOException e
                      {:e e

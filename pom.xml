@@ -4,7 +4,7 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.2.12</version>
+  <version>0.2.13</version>
   <name>talk2</name>
   <dependencies>
     <dependency>
@@ -20,7 +20,7 @@
     <dependency>
       <groupId>com.github.marianobarrios</groupId>
       <artifactId>tls-channel</artifactId>
-      <version>0.6.2</version>
+      <version>0.7.0</version>
     </dependency>
     <dependency>
       <groupId>primitive-math</groupId>
@@ -60,7 +60,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.9.19</version>
+      <version>0.9.21</version>
     </dependency>
   </dependencies>
   <build>

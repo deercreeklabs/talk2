@@ -101,14 +101,18 @@
                       (u/sym-map client-protcols-set
                                  prioritized-protocols-seq))))))
 
-(defn request-info [{:keys [headers first-line]}]
+(defn request-info [{:keys [headers first-line]} remote-address conn-id]
   (let [[method path http-version] (str/split first-line #"\s")
-        proper-upgrade-req? (and (= "GET" method)
-                                 (= "websocket" (some-> (:upgrade headers)
-                                                        (str/lower-case)))
-                                 (= "upgrade" (some-> (:connection headers)
-                                                      (str/lower-case)))
-                                 (= "13" (:sec-websocket-version headers)))
+        get? (= "GET" method)
+        ws-upgrade? (re-matches #"(?i).*websocket.*"
+                                (:upgrade headers))
+        connection-upgrade? (re-matches #"(?i).*upgrade.*"
+                                        (:connection headers))
+        version-13? (= "13" (:sec-websocket-version headers))
+        proper-upgrade-req? (and get?
+                                 ws-upgrade?
+                                 connection-upgrade?
+                                 version-13?)
         ws-key (:sec-websocket-key headers)
         make-set (fn [protocols]
                    (let [empties #{"" "null" nil}]
@@ -121,6 +125,14 @@
                                      (str/replace #"\s" "")
                                      (str/split #",")
                                      (make-set))]
+    (when-not proper-upgrade-req?
+      (log/error
+       (str "Got improper upgrade request:\n"
+            (u/pprint-str
+             (u/sym-map method headers first-line get? ws-upgrade?
+                        connection-upgrade? version-13?
+                        proper-upgrade-req? ws-key client-protocols-set
+                        remote-address conn-id)))))
     (u/sym-map proper-upgrade-req? ws-key http-version path
                client-protocols-set)))
 
@@ -261,14 +273,12 @@
                 http-info (u/byte-array->http-info new-ba)]
             (if-not (:complete? http-info)
               (recur new-ba)
-              (let [req-info (request-info http-info)
+              (let [req-info (request-info http-info remote-address conn-id)
                     {:keys [client-protocols-set
                             path
                             proper-upgrade-req?]} req-info]
                 (if-not proper-upgrade-req?
-                  (do
-                    (log/error "Got improper upgrade request")
-                    (close-conn!))
+                  (close-conn!)
                   (let [protocol (when (seq client-protocols-set)
                                    (choose-protocol client-protocols-set
                                                     prioritized-protocols-seq))

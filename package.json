@@ -2,6 +2,6 @@
     "devDependencies": {
         "shadow-cljs": "2.20.5",
         "source-map-support": "0.5.21",
-        "ws": "8.8.1"
+        "ws": "8.9.0"
     }
 }

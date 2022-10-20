@@ -105,9 +105,9 @@
   (let [[method path http-version] (str/split first-line #"\s")
         get? (= "GET" method)
         ws-upgrade? (re-matches #"(?i).*websocket.*"
-                                (:upgrade headers))
+                                (or (:upgrade headers) ""))
         connection-upgrade? (re-matches #"(?i).*upgrade.*"
-                                        (:connection headers))
+                                        (or (:connection headers) ""))
         version-13? (= "13" (:sec-websocket-version headers))
         proper-upgrade-req? (and get?
                                  ws-upgrade?

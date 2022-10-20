@@ -128,11 +128,10 @@
     (when-not proper-upgrade-req?
       (log/error
        (str "Got improper upgrade request:\n"
-            (u/pprint-str
-             (u/sym-map method headers first-line get? ws-upgrade?
-                        connection-upgrade? version-13?
-                        proper-upgrade-req? ws-key client-protocols-set
-                        remote-address conn-id)))))
+            (u/sym-map method headers first-line get? ws-upgrade?
+                       connection-upgrade? version-13?
+                       proper-upgrade-req? ws-key client-protocols-set
+                       remote-address conn-id))))
     (u/sym-map proper-upgrade-req? ws-key http-version path
                client-protocols-set)))
 

@@ -12,9 +12,13 @@
         private-key-str (some-> (System/getenv "TALK2_SERVER_PRIVATE_KEY_FILE")
                                 (slurp))]
     (when-not certificate-str
-      (throw (ex-info "Failed to load certificate file." {})))
+      (throw (ex-info (str "No certificate file specified in env var "
+                           "`TALK2_SERVER_CERTIFICATE_FILE`")
+                      {})))
     (when-not private-key-str
-      (throw (ex-info "Failed to load private key file" {})))
+      (throw (ex-info (str "No private key file specified in env var "
+                           "`TALK2_SERVER_PRIVATE_KEY_FILE`")
+                      {})))
     (u/sym-map certificate-str private-key-str)))
 
 (defn <handle-oasn [{:keys [arg backend-conn-id server]}]

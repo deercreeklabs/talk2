@@ -125,15 +125,13 @@
                                      (str/replace #"\s" "")
                                      (str/split #",")
                                      (make-set))]
-    (when-not proper-upgrade-req?
-      (log/error
-       (str "Got improper upgrade request:\n"
-            (u/sym-map method headers first-line get? ws-upgrade?
-                       connection-upgrade? version-13?
-                       proper-upgrade-req? ws-key client-protocols-set
-                       remote-address conn-id))))
-    (u/sym-map proper-upgrade-req? ws-key http-version path
-               client-protocols-set)))
+    (if proper-upgrade-req?
+      (u/sym-map proper-upgrade-req? ws-key http-version path
+                 client-protocols-set)
+      (u/sym-map method headers first-line get? ws-upgrade?
+                 connection-upgrade? version-13?
+                 proper-upgrade-req? ws-key client-protocols-set
+                 remote-address conn-id))))
 
 (defn make-upgrade-rsp [req-info protocol]
   (let [{:keys [http-version ws-key]} req-info
@@ -262,7 +260,8 @@
 (defn <connect
   [async-nio-ch rcv-ch send-ch remote-address conn-id *open? *server-running?
    close-conn! on-connect max-payload-len disable-keepalive?
-   keepalive-interval-secs prioritized-protocols-seq]
+   keepalive-interval-secs prioritized-protocols-seq
+   log-improper-upgrade-requests?]
   (ca/go
     (try
       (loop [unprocessed-ba nil]
@@ -276,6 +275,10 @@
                     {:keys [client-protocols-set
                             path
                             proper-upgrade-req?]} req-info]
+                (when (and log-improper-upgrade-requests?
+                           (not proper-upgrade-req?))
+                  (log/error (str "Got improper upgrade request:\n"
+                                  (u/pprint-str req-info))))
                 (if-not proper-upgrade-req?
                   (close-conn!)
                   (let [protocol (when (seq client-protocols-set)
@@ -366,7 +369,8 @@
 (defn do-connect!
   [^AsynchronousChannel async-nio-ch remote-address on-connect on-disconnect
    max-payload-len disable-keepalive? keepalive-interval-secs
-   prioritized-protocols-seq *next-conn-id *server-running?]
+   prioritized-protocols-seq *next-conn-id *server-running?
+   log-improper-upgrade-requests?]
   (let [rcv-ch (ca/chan 1000)
         send-ch (ca/chan 1000)
         *on-disconnect-called? (atom false)
@@ -387,12 +391,12 @@
       (<connect async-nio-ch rcv-ch send-ch remote-address conn-id *open?
                 *server-running? close-conn! on-connect max-payload-len
                 disable-keepalive? keepalive-interval-secs
-                prioritized-protocols-seq))))
+                prioritized-protocols-seq log-improper-upgrade-requests?))))
 
 (defn <accept-loop-non-tls
   [port group *next-conn-id *server-running? stop-server! on-connect
    on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
-   prioritized-protocols-seq]
+   prioritized-protocols-seq log-improper-upgrade-requests?]
   (ca/go
     (try
       (let [^AsynchronousServerSocketChannel
@@ -405,7 +409,7 @@
                                 on-disconnect max-payload-len disable-keepalive?
                                 keepalive-interval-secs
                                 prioritized-protocols-seq *next-conn-id
-                                *server-running?)
+                                *server-running? log-improper-upgrade-requests?)
                    (if @*server-running?
                      (.accept server nil this)
                      (.close server))))
@@ -426,7 +430,7 @@
 (defn <accept-loop-tls
   [port group *next-conn-id *server-running? stop-server! on-connect
    on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
-   prioritized-protocols-seq]
+   prioritized-protocols-seq log-improper-upgrade-requests?]
   (ca/go
     (try
       (let [^ServerSocketChannel server-nio-ch (ServerSocketChannel/open)]
@@ -451,7 +455,8 @@
                 (do-connect! async-nio-ch remote-addr-str on-connect
                              on-disconnect max-payload-len disable-keepalive?
                              keepalive-interval-secs prioritized-protocols-seq
-                             *next-conn-id *server-running?))))
+                             *next-conn-id *server-running?
+                             log-improper-upgrade-requests?))))
           (if @*server-running?
             (recur)
             (do
@@ -484,6 +489,7 @@
                 disable-keepalive?
                 dns-cache-secs
                 keepalive-interval-secs
+                log-improper-upgrade-requests?
                 private-key-str
                 on-connect
                 on-disconnect
@@ -544,7 +550,13 @@
       (throw (ex-info
               (str "`:port` parameter must be an integer. "
                    "Got: `" port "`.")
-              (u/sym-map port))))))
+              (u/sym-map port))))
+    (when (and (contains? config :log-improper-upgrade-requests?)
+               (not (boolean? log-improper-upgrade-requests?)))
+      (throw (ex-info
+              (str "`:log-improper-upgrade-requests?` parameter must be a "
+                   "boolean. Got: `" log-improper-upgrade-requests? "`.")
+              (u/sym-map log-improper-upgrade-requests?))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -554,6 +566,7 @@
                 disable-keepalive?
                 dns-cache-secs
                 keepalive-interval-secs
+                log-improper-upgrade-requests?
                 max-payload-len
                 on-connect
                 on-disconnect
@@ -586,7 +599,7 @@
     (<accept-loop port group *next-conn-id *server-running? stop-server!
                   on-connect on-disconnect max-payload-len
                   disable-keepalive? keepalive-interval-secs
-                  prioritized-protocols-seq)
+                  prioritized-protocols-seq log-improper-upgrade-requests?)
     (u/sym-map stop-server!)))
 
 (defn stop! [server]

@@ -28,7 +28,9 @@
                max-payload-len 65000
                on-disconnect (fn [{:keys [code]}])
                on-error (fn [{:keys [error]}]
-                          (log/error (u/ex-msg-and-stacktrace error)))
+                          (log/error (str "Got error on websocket to `" url
+                                          "`:\n"
+                                          (u/ex-msg-and-stacktrace error))))
                on-message (fn [{:keys [ws msg]}])
                on-connect (fn [{:keys [ws protocol]}])
                on-pong (fn [])

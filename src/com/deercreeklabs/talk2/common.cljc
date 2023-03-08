@@ -207,8 +207,7 @@
                              bytes)
           {:keys [cb]} (@*rpc-id->info rpc-id)]
       (swap! *rpc-id->info dissoc rpc-id)
-      (if-not cb
-        (log/error (str "No callback found for rpc-id `" rpc-id "`."))
+      (when cb
         (cb ret)))))
 
 (defmethod <process-packet! :rpc-err-rsp
@@ -219,8 +218,7 @@
     (let [{:keys [rpc-id]} packet
           {:keys [cb]} (@*rpc-id->info rpc-id)]
       (swap! *rpc-id->info dissoc rpc-id)
-      (if-not cb
-        (log/error (str "No callback found for rpc-id `" rpc-id "`."))
+      (when cb
         (cb (ex-info (str "RPC failed. msg-type-name: `" msg-type-name "`. "
                           "msg-type-id: `" msg-type-id "`. "
                           "rpc-id: `" rpc-id "`.\n See peer log "

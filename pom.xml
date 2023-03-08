@@ -4,7 +4,7 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.2.17</version>
+  <version>0.2.18</version>
   <name>talk2</name>
   <dependencies>
     <dependency>
@@ -50,7 +50,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>baracus</artifactId>
-      <version>0.3.4</version>
+      <version>0.3.5</version>
     </dependency>
     <dependency>
       <groupId>lambdaisland</groupId>
@@ -60,7 +60,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.10.0</version>
+      <version>0.10.1</version>
     </dependency>
   </dependencies>
   <build>

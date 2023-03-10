@@ -325,3 +325,21 @@
                  #(assoc-in % [:msg-type-id->info msg-type-id :info-sent?]
                             true)))))
     ret-ch))
+
+(defn gc-rpcs! [{:keys [*rpc-id->info]}]
+  (let [id->info @*rpc-id->info
+        now (u/current-time-ms)
+        expired-rpc-ids (reduce-kv
+                         (fn [acc rpc-id {:keys [expiry-time-ms]}]
+                           (if (> now expiry-time-ms)
+                             (conj acc rpc-id)
+                             acc))
+                         []
+                         id->info)]
+    (doseq [rpc-id expired-rpc-ids]
+      (let [{:keys [cb timeout-ms]
+             :or {cb (constantly nil)}} (id->info rpc-id)]
+        (cb (ex-info
+             (str "RPC timed out after " timeout-ms " milliseconds.")
+             (u/sym-map rpc-id timeout-ms)))))
+    (swap! *rpc-id->info #(apply dissoc % expired-rpc-ids))))

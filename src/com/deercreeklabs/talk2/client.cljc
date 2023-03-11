@@ -36,10 +36,11 @@
 
 (defn fail-rpcs! [{:keys [*rpc-id->info reason]}]
   (doseq [[rpc-id info] @*rpc-id->info]
-    (let [{:keys [cb] :or {cb (constantly nil)}} info]
-      (cb (ex-info
-            (str "RPC failed because " reason ".")
-            (u/sym-map rpc-id))))))
+    (let [{:keys [cb]} info]
+      (when (ifn? cb)
+        (cb (ex-info
+             (str "RPC failed because " reason ".")
+             (u/sym-map rpc-id)))))))
 
 (defn connect!
   [{:keys [*conn-info

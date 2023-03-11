@@ -105,28 +105,10 @@
     (when-not @*stop?
       (recur))))
 
-(defn gc-rpcs! [{:keys [*rpc-id->info]}]
-  (let [id->info @*rpc-id->info
-        now (u/current-time-ms)
-        expired-rpc-ids (reduce-kv
-                         (fn [acc rpc-id {:keys [expiry-time-ms]}]
-                           (if (> now expiry-time-ms)
-                             (conj acc rpc-id)
-                             acc))
-                         []
-                         id->info)]
-    (doseq [rpc-id expired-rpc-ids]
-      (let [{:keys [cb timeout-ms]
-             :or {cb (constantly nil)}} (id->info rpc-id)]
-        (cb (ex-info
-             (str "RPC timed out after " timeout-ms " milliseconds.")
-             (u/sym-map rpc-id timeout-ms)))))
-    (swap! *rpc-id->info #(apply dissoc % expired-rpc-ids))))
-
 (defn start-gc-loop! [{:keys [*stop?] :as arg}]
   (ca/go-loop []
     (try
-      (gc-rpcs! arg)
+      (common/gc-rpcs! arg)
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in gc loop:\n"
                         (u/ex-msg-and-stacktrace e)))))

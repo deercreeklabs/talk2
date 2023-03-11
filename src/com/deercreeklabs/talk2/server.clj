@@ -1,6 +1,8 @@
 (ns com.deercreeklabs.talk2.server
   (:require
+   [clojure.core.async :as ca]
    [clojure.string :as str]
+   [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [com.deercreeklabs.talk2.common :as common]
@@ -56,6 +58,18 @@
       (when-let [f (:on-connect ep)]
         (f conn)))))
 
+(defn start-gc-loop! [{:keys [*stop? *path->ep] :as arg}]
+  (ca/go-loop []
+    (try
+      (doseq [[path ep] @*path->ep]
+        (common/gc-rpcs! ep))
+      (catch Exception e
+        (log/error (str "Error in gc loop:\n"
+                        (u/ex-msg-and-stacktrace e)))))
+    (au/<? (ca/timeout 1000))
+    (when-not @*stop?
+      (recur))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn server
@@ -81,6 +95,7 @@
                                                   private-key-str))
         server (u/sym-map *conn-id->info *path->ep *stop? ws-server)]
     (reset! *server server)
+    (start-gc-loop! server)
     server))
 
 (defn stop! [server]

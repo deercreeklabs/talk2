@@ -34,9 +34,18 @@
     (when (and @*ws-connected? (not @*stop?))
       (recur))))
 
+(defn fail-rpcs! [{:keys [*rpc-id->info reason]}]
+  (doseq [[rpc-id info] @*rpc-id->info]
+    (let [{:keys [cb]} info]
+      (when (ifn? cb)
+        (cb (ex-info
+             (str "RPC failed because " reason ".")
+             (u/sym-map rpc-id)))))))
+
 (defn connect!
   [{:keys [*conn-info
            *reconnect-wait-ms
+           *rpc-id->info
            disconnect-notify-ch
            get-url
            min-reconnect-wait-ms
@@ -47,6 +56,9 @@
         *ws-connected? (atom false)
         stop-sending-ch (ca/chan)
         opts {:on-disconnect (fn [{:keys [code]}]
+                               (fail-rpcs! (assoc arg :reason
+                                                  "the client disconnected"))
+                               (reset! *rpc-id->info nil)
                                (reset! *conn-info nil)
                                (reset! *ws-connected? false)
                                (ca/put! stop-sending-ch true)

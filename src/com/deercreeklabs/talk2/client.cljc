@@ -148,7 +148,8 @@
   (let [config (add-reconnect-options config*)
         {:keys [get-url handlers protocol]} config
         _ (check-get-url get-url)
-        _ (common/check-handlers (u/sym-map protocol handlers))
+        _ (when handlers
+            (common/check-handlers (u/sym-map protocol handlers)))
         _ (common/check-protocol protocol)
         send-ch (ca/chan 1000)
         *conn-info (atom nil)

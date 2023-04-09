@@ -19,6 +19,8 @@
 
 (defn make-ep [{:keys [handlers on-connect on-disconnect protocol]}]
   (common/check-protocol protocol)
+  (when handlers
+    (common/check-handlers (u/sym-map handlers protocol)))
   (let [*next-rpc-id (atom 0)
         *rpc-id->info (atom {})
         {:keys [msg-type-name->msg-type-id

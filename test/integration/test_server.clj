@@ -26,13 +26,13 @@
         offset-numbers (map #(+ offset %) numbers)]
     (server/<send-msg! {:arg offset-numbers
                         :conn-id backend-conn-id
-                        :msg-type-name :sum-numbers
+                        :msg-type-name "sum-numbers"
                         :server server})))
 
 (defn handle-request-status-update [{:keys [conn-id server]}]
   (server/<send-msg! {:arg "On time"
                       :conn-id conn-id
-                      :msg-type-name :status-update
+                      :msg-type-name "status-update"
                       :server server}))
 
 (defn handle-count-bytes [{:keys [arg]}]
@@ -44,25 +44,23 @@
         config (cond-> {:port (u/str->int port-str)}
                  tls? (merge (get-tls-configs)))
         server (server/server config)
-        client-handlers {:count-bytes
-                         handle-count-bytes
+        handlers {"count-bytes"
+                  handle-count-bytes
 
-                         :offset-and-sum-numbers
-                         #(<handle-oasn
-                           (-> %
-                               (assoc :server server)
-                               (assoc :backend-conn-id
-                                      @*backend-conn-id)))
+                  "offset-and-sum-numbers"
+                  #(<handle-oasn (-> %
+                                     (assoc :server server)
+                                     (assoc :backend-conn-id
+                                            @*backend-conn-id)))
 
-                         :request-status-update
-                         #(handle-request-status-update
-                           (assoc % :server server))
+                  "request-status-update"
+                  #(handle-request-status-update (assoc % :server server))
 
-                         :throw-if-even
-                         #(if (even? (:arg %))
-                            (throw (ex-info "Even!" {}))
-                            false)}
-        client-ep-info {:handlers client-handlers
+                  "throw-if-even"
+                  #(if (even? (:arg %))
+                     (throw (ex-info "Even!" {}))
+                     false)}
+        client-ep-info {:handlers handlers
                         :on-connect (fn [conn]
                                       (log/info
                                        (str "Client connection opened:\n"

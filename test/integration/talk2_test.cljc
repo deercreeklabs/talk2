@@ -33,11 +33,11 @@
            handle-status-update (fn [{:keys [arg]}]
                                   (ca/put! status-update-ch arg))
            client-config {:get-url (constantly "ws://localhost:8080/client")
-                          :handlers {:status-update handle-status-update}
+                          :handlers {"status-update" handle-status-update}
                           :protocol tp/client-gateway-protocol}
            client (client/client client-config)
            be-config {:get-url (constantly "ws://localhost:8080/backend")
-                      :handlers {:sum-numbers handle-sum-numbers}
+                      :handlers {"sum-numbers" handle-sum-numbers}
                       :protocol tp/backend-gateway-protocol
                       :on-connect (fn [info]
                                     (ca/put! backend-connected-ch true))}
@@ -46,24 +46,24 @@
          (let [[_ ch] (ca/alts! [backend-connected-ch (ca/timeout 5000)])
                _ (is (= backend-connected-ch ch))
                _ (is (= 10000000 (au/<? (client/<send-msg!
-                                         client :count-bytes
+                                         client "count-bytes"
                                          bytes/bytes-10M))))
                numbers [2 3 8 2 3]
                offset 3
                arg (u/sym-map numbers offset)
                oasn-rsp (au/<? (client/<send-msg!
-                                client :offset-and-sum-numbers arg))
+                                client "offset-and-sum-numbers" arg))
                expected (apply + (map #(+ offset %) numbers))
                _ (is (= expected oasn-rsp))
                _ (is (= true (au/<? (client/<send-msg!
-                                     client :request-status-update nil))))
+                                     client "request-status-update" nil))))
                [v ch] (ca/alts! [status-update-ch (ca/timeout 5000)])
                _ (is (= status-update-ch ch))
                _ (is (= "On time" v))
-               ret (au/<? (client/<send-msg! client :throw-if-even 1))
+               ret (au/<? (client/<send-msg! client "throw-if-even" 1))
                _ (is (= false ret))]
            (try
-             (au/<? (client/<send-msg! client :throw-if-even 2))
+             (au/<? (client/<send-msg! client "throw-if-even" 2))
              (is (= :should-throw :but-didnt))
              (catch #?(:clj Exception :cljs js/Error) e
                (is (= :should-throw :should-throw)))))
@@ -84,7 +84,7 @@
        (try
          (let [msg bytes/bytes-10M
                chans (mapv (fn [x]
-                             (client/<send-msg! client :count-bytes msg))
+                             (client/<send-msg! client "count-bytes" msg))
                            (range 10))
                merged-ch (ca/merge chans)
                _ (dotimes [i (count chans)]

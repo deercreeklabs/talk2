@@ -18,9 +18,9 @@
                          "Must be associative. Got `" (or protocol "nil") "`.")
                     (u/sym-map protocol))))
   (doseq [[msg-type-name msg-type-info] protocol]
-    (when-not (keyword? msg-type-name)
+    (when-not (string? msg-type-name)
       (throw (ex-info (str "Invalid msg type name in protocol. Must be a "
-                           "keyword. Got `" (or msg-type-name "nil") "`.")
+                           "string. Got `" (or msg-type-name "nil") "`.")
                       (u/sym-map msg-type-name msg-type-info))))
     (when-not (associative? msg-type-info)
       (throw (ex-info
@@ -43,11 +43,17 @@
                      (or ret-schema "nil") "`.")
                 (u/sym-map msg-type-name msg-type-info ret-schema)))))))
 
-(defn check-handlers [{:keys [protocol handlers]}]
+(defn check-handlers [{:keys [protocol handlers] :as arg}]
+  (when-not protocol
+    (throw (ex-info (str "No `:protocol` in call to `check-handlers`.")
+                    arg)))
+  (when-not handlers
+    (throw (ex-info (str "No `:handlers` in call to `check-handlers`.")
+                    arg)))
   (doseq [[msg-type-name handler] handlers]
-    (when-not (keyword? msg-type-name)
+    (when-not (string? msg-type-name)
       (throw (ex-info (str "Invalid msg type name in handlers map. Must be a "
-                           "keyword. Got `" (or msg-type-name "nil") "`.")
+                           "string. Got `" (or msg-type-name "nil") "`.")
                       (u/sym-map msg-type-name))))
     (when-not (ifn? handler)
       (throw (ex-info (str "Invalid handler for msg type `" msg-type-name "`. "

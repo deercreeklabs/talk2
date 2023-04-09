@@ -13,7 +13,7 @@
 
 (l/def-record-schema msg-type-info-schema
   [:arg-json-schema l/string-schema]
-  [:msg-type-name l/keyword-schema]
+  [:msg-type-name l/string-schema]
   [:ret-json-schema l/string-schema])
 
 (l/def-record-schema packet-schema

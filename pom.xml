@@ -4,7 +4,7 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.2.18</version>
+  <version>0.3.0</version>
   <name>talk2</name>
   <dependencies>
     <dependency>
@@ -30,7 +30,7 @@
     <dependency>
       <groupId>applied-science</groupId>
       <artifactId>js-interop</artifactId>
-      <version>0.3.3</version>
+      <version>0.4.1</version>
     </dependency>
     <dependency>
       <groupId>com.fzakaria</groupId>
@@ -45,7 +45,7 @@
     <dependency>
       <groupId>com.taoensso</groupId>
       <artifactId>timbre</artifactId>
-      <version>5.2.1</version>
+      <version>6.1.0</version>
     </dependency>
     <dependency>
       <groupId>deercreeklabs</groupId>
@@ -55,12 +55,12 @@
     <dependency>
       <groupId>lambdaisland</groupId>
       <artifactId>uri</artifactId>
-      <version>1.13.95</version>
+      <version>1.15.125</version>
     </dependency>
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.10.1</version>
+      <version>0.11.0</version>
     </dependency>
   </dependencies>
   <build>

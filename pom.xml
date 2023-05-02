@@ -4,7 +4,7 @@
   <packaging>jar</packaging>
   <groupId>com.deercreeklabs</groupId>
   <artifactId>talk2</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.1</version>
   <name>talk2</name>
   <dependencies>
     <dependency>

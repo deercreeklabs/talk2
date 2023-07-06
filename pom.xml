@@ -30,27 +30,27 @@
     <dependency>
       <groupId>applied-science</groupId>
       <artifactId>js-interop</artifactId>
-      <version>0.4.1</version>
+      <version>0.4.2</version>
     </dependency>
     <dependency>
       <groupId>com.fzakaria</groupId>
       <artifactId>slf4j-timbre</artifactId>
-      <version>0.3.21</version>
+      <version>0.4.0</version>
     </dependency>
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>async-utils</artifactId>
-      <version>0.1.27</version>
+      <version>0.1.28</version>
     </dependency>
     <dependency>
       <groupId>com.taoensso</groupId>
       <artifactId>timbre</artifactId>
-      <version>6.1.0</version>
+      <version>6.2.1</version>
     </dependency>
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>baracus</artifactId>
-      <version>0.3.5</version>
+      <version>0.5.1</version>
     </dependency>
     <dependency>
       <groupId>lambdaisland</groupId>
@@ -60,7 +60,7 @@
     <dependency>
       <groupId>deercreeklabs</groupId>
       <artifactId>lancaster</artifactId>
-      <version>0.11.0</version>
+      <version>0.12.2</version>
     </dependency>
   </dependencies>
   <build>

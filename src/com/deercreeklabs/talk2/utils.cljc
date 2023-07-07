@@ -157,52 +157,64 @@
 
 (defn add-header [headers line]
   (let [[k v] (str/split line #":" 2)
+        _ (when-not v
+            (throw (ex-info (str "Missing colon in header line: `" line "`.")
+                            (sym-map headers line))))
         kw-k (-> (str/trim k)
                  (str/lower-case)
-                 (keyword))]
+                 (keyword))
+        trimmed-v (str/trim v)]
     (update headers kw-k (fn [existing-v]
-                           (let [trimmed-v (str/trim v)]
-                             (if (empty? existing-v)
-                               trimmed-v
-                               (str existing-v ", " trimmed-v)))))))
+                           (if (empty? existing-v)
+                             trimmed-v
+                             (str existing-v ", " trimmed-v))))))
 
 (defn byte-array->http-info [ba]
-  (let [bv (vec ba)
-        len (count bv)]
+  (let [len (count ba)]
     (loop [i 0
-           complete? false
-           headers {}
+           line-start 0
            first-line nil
-           unprocessed-bytes []]
-      (if (>= i len)
-        {:complete? complete?
-         :headers headers
-         :first-line first-line
-         :unprocessed-ba (ba/byte-array unprocessed-bytes)}
-        (let [b (nth bv i)
-              ni (inc i)
-              nb (when (< ni len)
-                   (nth bv ni))
-              eol? (and (= 13 b) (= 10 nb))
-              new-unprocessed-bytes (conj unprocessed-bytes b)
-              line (when-not complete?
-                     (->> (map char unprocessed-bytes)
-                          (apply str)
-                          (str/trim)))]
+           headers {}]
+      (let [i1 (inc i)
+            i2 (+ i 2)
+            i3 (+ i 3)
+            b0 (aget ba i)
+            eol? (and (< i1 len)
+                      (= 13 b0)
+                      (= 10 (aget ba i1)))
+            eom? (and eol?
+                      (< i3 len)
+                      (= 13 (aget ba i2))
+                      (= 10 (aget ba i3)))
+            line (when eol?
+                   (let [chars (map #(char (if (neg? %)
+                                             (+ 256 %)
+                                             %))
+                                    (ba/slice-byte-array ba line-start i))]
+                     (-> (apply str chars)
+                         (str/trim))))
+            [i* line-start*] (if eol?
+                               [i2 i2]
+                               [i1 line-start])
+            first-line* (or first-line line)
+            headers* (if (and first-line eol?)
+                       (add-header headers line)
+                       headers)]
+        (cond
+          eom?
+          {:complete? true
+           :first-line first-line*
+           :headers headers*
+           :unprocessed-ba (ba/slice-byte-array ba (inc i3))}
 
-          (cond
-            (not eol?)
-            (recur ni complete? headers first-line new-unprocessed-bytes)
+          (= len i1)
+          {:complete? false}
 
-            (not first-line)
-            (recur (inc ni) complete? headers line [])
-
-            (seq line)
-            (let [new-headers (add-header headers line)]
-              (recur (inc ni) complete? new-headers first-line []))
-
-            :else ; Empty line means end of the rsp
-            (recur (inc ni) true headers first-line [])))))))
+          :else
+          (recur i*
+                 line-start*
+                 first-line*
+                 headers*))))))
 
 (defn mask-ws-payload!
   "Mutates the ba arg in place to avoid allocation costs, which are significant

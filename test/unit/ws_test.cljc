@@ -19,9 +19,12 @@
                "Server: Kaazing Gateway"
                "Upgrade: websocket"]]
     (-> (str/join "\r\n" lines)
-        (str "\r\n\r\nextra"))))
+        (str "\r\n\r\n"))))
 
-(def rsp-ba (ba/utf8->byte-array rsp-str))
+(def extra-non-ascii-ba (ba/byte-array [189 190 191]))
+
+(def rsp-ba (ba/concat-byte-arrays
+             [(ba/utf8->byte-array rsp-str) extra-non-ascii-ba]))
 
 (deftest test-ba->rsp-info
   (let [ret (u/byte-array->http-info rsp-ba)
@@ -33,16 +36,11 @@
                             :upgrade "websocket"}
                   :first-line "HTTP/1.1 101 Web Socket Protocol Handshake"}]
     (is (= expected (dissoc ret :unprocessed-ba)))
-    (is (= "extra" (apply str (map char (:unprocessed-ba ret)))))))
+    (is (ba/equivalent-byte-arrays? extra-non-ascii-ba (:unprocessed-ba ret)))))
 
 (deftest test-ba->rsp-info-partial
-  (let [ret (u/byte-array->http-info (ba/slice-byte-array rsp-ba 0 110))
-        expected {:complete? false
-                  :headers {:connection "Upgrade"
-                            :date "Mon, 31 May 2021 22:13:49 GMT"}
-                  :first-line "HTTP/1.1 101 Web Socket Protocol Handshake"}]
-    (is (= expected (dissoc ret :unprocessed-ba)))
-    (is (= "Sec-Web" (apply str (map char (:unprocessed-ba ret)))))))
+  (let [ret (u/byte-array->http-info (ba/slice-byte-array rsp-ba 0 110))]
+    (is (= false (:complete? ret)))))
 
 (deftest test-normal-framing
   (let [xf-map (fn [m]
@@ -55,7 +53,7 @@
                                 (update :masking-key ba/byte-array->hex-str)))
 
         m-1 {:fin? true
-             :opcode 1 ; Text
+             :opcode 1                  ; Text
              :payload-ba (ba/utf8->byte-array "Hello")}
         ba-1 (u/frame-info->byte-array m-1)
         _ (is (= "810548656c6c6f" (ba/byte-array->hex-str ba-1)))
@@ -67,7 +65,7 @@
 
         m-2 {:fin? true
              :masking-key (ba/byte-array [55, -6, 33, 61])
-             :opcode 1 ; Text
+             :opcode 1                  ; Text
              :payload-ba (ba/utf8->byte-array "Hello")}
         ba-2 (u/frame-info->byte-array m-2)
         _ (is (= "818537fa213d7f9f4d5158" (ba/byte-array->hex-str ba-2)))
@@ -78,7 +76,7 @@
         _ (is (= expected-map (xf-map-no-payload rt-2)))
 
         m-3 {:fin? false
-             :opcode 1 ; Text
+             :opcode 1                  ; Text
              :payload-ba (ba/utf8->byte-array "Hel")}
         ba-3 (u/frame-info->byte-array m-3)
         _ (is (= "010348656c" (ba/byte-array->hex-str ba-3)))
@@ -89,7 +87,7 @@
         _ (is (= expected-map (xf-map rt-3)))
 
         m-4 {:fin? true
-             :opcode 0 ; Continuation
+             :opcode 0                  ; Continuation
              :payload-ba (ba/utf8->byte-array "lo")}
         ba-4 (u/frame-info->byte-array m-4)
         _ (is (= "80026c6f" (ba/byte-array->hex-str ba-4)))
@@ -100,7 +98,7 @@
         _ (is (= expected-map (xf-map rt-4)))
 
         m-4 {:fin? true
-             :opcode 9 ; Ping
+             :opcode 9                  ; Ping
              :payload-ba (ba/utf8->byte-array "Hello")}
         ba-4 (u/frame-info->byte-array m-4)
         _ (is (= "890548656c6c6f" (ba/byte-array->hex-str ba-4)))
@@ -112,7 +110,7 @@
 
         m-5 {:fin? true
              :masking-key (ba/byte-array [55, -6, 33, 61])
-             :opcode 10 ; Pong
+             :opcode 10                 ; Pong
              :payload-ba (ba/utf8->byte-array "Hello")}
         ba-5 (u/frame-info->byte-array m-5)
         _ (is (= "8a8537fa213d7f9f4d5158" (ba/byte-array->hex-str ba-5)))
@@ -123,7 +121,7 @@
         _ (is (= expected-map (xf-map-no-payload rt-5)))
 
         m-6 {:fin? true
-             :opcode 2 ; Binary
+             :opcode 2                  ; Binary
              :payload-len 256}
         ba-6 (u/frame-header-map->byte-array m-6)
         _ (is (= "827e0100" (ba/byte-array->hex-str ba-6)))
@@ -133,7 +131,7 @@
         _ (is (= expected-map (xf-map rt-6)))
 
         m-6 {:fin? true
-             :opcode 2 ; Binary
+             :opcode 2                  ; Binary
              :payload-len 65536}
         ba-6 (u/frame-header-map->byte-array m-6)
         _ (is (= "827f0000000000010000" (ba/byte-array->hex-str ba-6)))

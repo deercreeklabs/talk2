@@ -393,78 +393,82 @@
                 disable-keepalive? keepalive-interval-secs
                 prioritized-protocols-seq log-improper-upgrade-requests?))))
 
-(defn <accept-loop-non-tls
+(defn accept-loop-non-tls
   [port group *next-conn-id *server-running? stop-server! on-connect
    on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq log-improper-upgrade-requests?]
-  (ca/go
-    (try
-      (let [^AsynchronousServerSocketChannel
-            server (AsynchronousServerSocketChannel/open (:obj group))
-            h (completion-handler
-               (fn on-completed [this ^AsynchronousSocketChannel async-nio-ch]
-                 (let [remote-addr (.getRemoteAddress async-nio-ch)
-                       remote-addr-str (.toString ^SocketAddress remote-addr)]
-                   (do-connect! async-nio-ch remote-addr-str on-connect
-                                on-disconnect max-payload-len disable-keepalive?
-                                keepalive-interval-secs
-                                prioritized-protocols-seq *next-conn-id
-                                *server-running? log-improper-upgrade-requests?)
-                   (if @*server-running?
-                     (.accept server nil this)
-                     (.close server))))
-               (fn on-failed [this e]
-                 ;; Ignore exceptions from closing channel
-                 (when-not (or (instance? CancellationException e)
-                               (instance? AsynchronousCloseException e))
-                   (log/error (u/ex-msg-and-stacktrace e)))))]
-        (.setOption server StandardSocketOptions/SO_REUSEADDR true)
-        (.bind server (InetSocketAddress. port))
-        (.accept server nil h))
-      (catch IOException e ; happens if group is closed
-        nil)
-      (catch Exception e
-        (log/error (u/ex-msg-and-stacktrace e))
-        (stop-server!)))))
+  (try
+    (let [^AsynchronousServerSocketChannel
+          server (AsynchronousServerSocketChannel/open (:obj group))
+          h (completion-handler
+             (fn on-completed [this ^AsynchronousSocketChannel async-nio-ch]
+               (let [remote-addr (.getRemoteAddress async-nio-ch)
+                     remote-addr-str (.toString ^SocketAddress remote-addr)]
+                 (do-connect! async-nio-ch remote-addr-str on-connect
+                              on-disconnect max-payload-len disable-keepalive?
+                              keepalive-interval-secs
+                              prioritized-protocols-seq *next-conn-id
+                              *server-running? log-improper-upgrade-requests?)
+                 (if @*server-running?
+                   (.accept server nil this)
+                   (.close server))))
+             (fn on-failed [this e]
+               ;; Ignore exceptions from closing channel
+               (when-not (or (instance? CancellationException e)
+                             (instance? AsynchronousCloseException e))
+                 (log/error (u/ex-msg-and-stacktrace e)))))]
+      (.setOption server StandardSocketOptions/SO_REUSEADDR true)
+      (.bind server (InetSocketAddress. port))
+      (.accept server nil h))
+    (catch IOException e ; happens if group is closed
+      nil)
+    (catch Exception e
+      (log/error (u/ex-msg-and-stacktrace e))
+      (stop-server!))))
 
-(defn <accept-loop-tls
+(defn accept-loop-tls
   [port group *next-conn-id *server-running? stop-server! on-connect
    on-disconnect max-payload-len disable-keepalive? keepalive-interval-secs
    prioritized-protocols-seq log-improper-upgrade-requests?]
-  (ca/go
-    (try
-      (let [^ServerSocketChannel server-nio-ch (ServerSocketChannel/open)]
-        (.configureBlocking server-nio-ch false)
-        (.setOption server-nio-ch StandardSocketOptions/SO_REUSEADDR true)
-        (.bind server-nio-ch (InetSocketAddress. port))
-        (loop []
-          (let [^SocketChannel raw-nio-ch (.accept server-nio-ch)]
-            (if-not raw-nio-ch
-              (ca/<! (ca/timeout 100))
-              (let [^SSLContext ssl-ctx (:ssl-ctx group)
-                    _ (.configureBlocking raw-nio-ch false)
-                    ^ServerTlsChannel$Builder builder (ServerTlsChannel/newBuilder
-                                                       ^SocketChannel raw-nio-ch
-                                                       ^SSLContext ssl-ctx)
-                    ^TlsChannel tls-nio-ch (.build builder)
-                    ^AsynchronousTlsChannelGroup group-obj (:obj group)
-                    async-nio-ch (AsynchronousTlsChannel. group-obj tls-nio-ch
-                                                          raw-nio-ch)
-                    remote-address (.getRemoteAddress raw-nio-ch)
-                    remote-addr-str (.toString ^SocketAddress remote-address)]
-                (do-connect! async-nio-ch remote-addr-str on-connect
-                             on-disconnect max-payload-len disable-keepalive?
-                             keepalive-interval-secs prioritized-protocols-seq
-                             *next-conn-id *server-running?
-                             log-improper-upgrade-requests?))))
-          (if @*server-running?
-            (recur)
-            (do
-              (.close ^ServerSocket (.socket server-nio-ch))
-              (.close server-nio-ch)))))
-      (catch Exception e
-        (log/error (u/ex-msg-and-stacktrace e))
-        (stop-server!)))))
+  (try
+    (let [^ServerSocketChannel server-nio-ch (ServerSocketChannel/open)]
+      (.configureBlocking server-nio-ch false)
+      (.setOption server-nio-ch StandardSocketOptions/SO_REUSEADDR true)
+      (.bind server-nio-ch (InetSocketAddress. port))
+      (ca/go
+        (try
+          (loop []
+            (let [^SocketChannel raw-nio-ch (.accept server-nio-ch)]
+              (if-not raw-nio-ch
+                (ca/<! (ca/timeout 100))
+                (let [^SSLContext ssl-ctx (:ssl-ctx group)
+                      _ (.configureBlocking raw-nio-ch false)
+                      ^ServerTlsChannel$Builder
+                      builder (ServerTlsChannel/newBuilder
+                               ^SocketChannel raw-nio-ch
+                               ^SSLContext ssl-ctx)
+                      ^TlsChannel tls-nio-ch (.build builder)
+                      ^AsynchronousTlsChannelGroup group-obj (:obj group)
+                      async-nio-ch (AsynchronousTlsChannel. group-obj tls-nio-ch
+                                                            raw-nio-ch)
+                      remote-address (.getRemoteAddress raw-nio-ch)
+                      remote-addr-str (.toString ^SocketAddress remote-address)]
+                  (do-connect! async-nio-ch remote-addr-str on-connect
+                               on-disconnect max-payload-len disable-keepalive?
+                               keepalive-interval-secs prioritized-protocols-seq
+                               *next-conn-id *server-running?
+                               log-improper-upgrade-requests?))))
+            (if @*server-running?
+              (recur)
+              (do
+                (.close ^ServerSocket (.socket server-nio-ch))
+                (.close server-nio-ch))))
+          (catch Exception e
+            (log/error (u/ex-msg-and-stacktrace e))
+            (stop-server!)))))
+    (catch Exception e
+      (log/error (u/ex-msg-and-stacktrace e))
+      (stop-server!))))
 
 (defn async-nio-ch-group []
   (let [^AsynchronousChannelProvider
@@ -590,16 +594,16 @@
                          (do
                            (log/info "Stopping server...")
                            ((:shutdown-now! group)))))
-        <accept-loop (if ssl-ctx
-                       <accept-loop-tls
-                       <accept-loop-non-tls)]
+        accept-loop (if ssl-ctx
+                      accept-loop-tls
+                      accept-loop-non-tls)]
     (log/info (str "Starting server on port " port "."))
     (log/info (str "TLS? " (boolean ssl-ctx)))
     (Security/setProperty "networkaddress.cache.ttl" (str dns-cache-secs))
-    (<accept-loop port group *next-conn-id *server-running? stop-server!
-                  on-connect on-disconnect max-payload-len
-                  disable-keepalive? keepalive-interval-secs
-                  prioritized-protocols-seq log-improper-upgrade-requests?)
+    (accept-loop port group *next-conn-id *server-running? stop-server!
+                 on-connect on-disconnect max-payload-len
+                 disable-keepalive? keepalive-interval-secs
+                 prioritized-protocols-seq log-improper-upgrade-requests?)
     (u/sym-map stop-server!)))
 
 (defn stop! [server]

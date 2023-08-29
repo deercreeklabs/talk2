@@ -170,51 +170,54 @@
                              (str existing-v ", " trimmed-v))))))
 
 (defn byte-array->http-info [ba]
-  (let [len (count ba)]
-    (loop [i 0
-           line-start 0
-           first-line nil
-           headers {}]
-      (let [i1 (inc i)
-            i2 (+ i 2)
-            i3 (+ i 3)
-            b0 (aget ba i)
-            eol? (and (< i1 len)
-                      (= 13 b0)
-                      (= 10 (aget ba i1)))
-            eom? (and eol?
-                      (< i3 len)
-                      (= 13 (aget ba i2))
-                      (= 10 (aget ba i3)))
-            line (when eol?
-                   (let [chars (map #(char (if (neg? %)
-                                             (+ 256 %)
-                                             %))
-                                    (ba/slice-byte-array ba line-start i))]
-                     (-> (apply str chars)
-                         (str/trim))))
-            [i* line-start*] (if eol?
-                               [i2 i2]
-                               [i1 line-start])
-            first-line* (or first-line line)
-            headers* (if (and first-line eol?)
-                       (add-header headers line)
-                       headers)]
-        (cond
-          eom?
-          {:complete? true
-           :first-line first-line*
-           :headers headers*
-           :unprocessed-ba (ba/slice-byte-array ba (inc i3))}
+  (when ba
+    (let [len (count ba)]
+      (if (zero? len)
+        {}
+        (loop [i 0
+               line-start 0
+               first-line nil
+               headers {}]
+          (let [i1 (inc i)
+                i2 (+ i 2)
+                i3 (+ i 3)
+                b0 (aget ba i)
+                eol? (and (< i1 len)
+                          (= 13 b0)
+                          (= 10 (aget ba i1)))
+                eom? (and eol?
+                          (< i3 len)
+                          (= 13 (aget ba i2))
+                          (= 10 (aget ba i3)))
+                line (when eol?
+                       (let [chars (map #(char (if (neg? %)
+                                                 (+ 256 %)
+                                                 %))
+                                        (ba/slice-byte-array ba line-start i))]
+                         (-> (apply str chars)
+                             (str/trim))))
+                [i* line-start*] (if eol?
+                                   [i2 i2]
+                                   [i1 line-start])
+                first-line* (or first-line line)
+                headers* (if (and first-line eol?)
+                           (add-header headers line)
+                           headers)]
+            (cond
+              eom?
+              {:complete? true
+               :first-line first-line*
+               :headers headers*
+               :unprocessed-ba (ba/slice-byte-array ba (inc i3))}
 
-          (= len i1)
-          {:complete? false}
+              (= len i1)
+              {:complete? false}
 
-          :else
-          (recur i*
-                 line-start*
-                 first-line*
-                 headers*))))))
+              :else
+              (recur i*
+                     line-start*
+                     first-line*
+                     headers*))))))))
 
 (defn mask-ws-payload!
   "Mutates the ba arg in place to avoid allocation costs, which are significant

@@ -264,13 +264,19 @@
    log-improper-upgrade-requests?]
   (ca/go
     (try
-      (loop [unprocessed-ba nil]
+      (loop [unprocessed-ba (ba/byte-array [])]
         (when (and @*open? @*server-running?)
           (let [ba (au/<? rcv-ch)
                 new-ba (ba/concat-byte-arrays [unprocessed-ba ba])
                 http-info (u/byte-array->http-info new-ba)]
-            (if-not (:complete? http-info)
+            (cond
+              (nil? ba)
+              (close-conn!)
+
+              (not (:complete? http-info))
               (recur new-ba)
+
+              :else
               (let [req-info (request-info http-info remote-address conn-id)
                     {:keys [client-protocols-set
                             path

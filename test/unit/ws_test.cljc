@@ -23,6 +23,12 @@
 
 (def extra-non-ascii-ba (ba/byte-array [189 190 191]))
 
+(deftest test-byte-array->http-info-with-nil-arg
+  (is (= nil (u/byte-array->http-info nil))))
+
+(deftest test-byte-array->http-info-with-empty-ba-arg
+  (is (= {} (u/byte-array->http-info (ba/byte-array [])))))
+
 (def rsp-ba (ba/concat-byte-arrays
              [(ba/utf8->byte-array rsp-str) extra-non-ascii-ba]))
 
